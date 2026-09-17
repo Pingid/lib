@@ -1,0 +1,14 @@
+{
+  "files": [],
+  "references": [
+    // mono
+    { "path": "./workspace/tsconfig/tsconfig.mono.json" },
+    // workspace
+    { "path": "./workspace/tsconfig/tsconfig.vite.json" },
+
+    // packages
+    { "path": "./lib/compose" },
+    { "path": "./lib/proxy" },
+    { "path": "./lib/vite" }
+  ]
+}

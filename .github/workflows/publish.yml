@@ -1,0 +1,58 @@
+name: publish
+
+# A `v*` tag is a release. Every other push to main is a dev build.
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+permissions:
+  contents: read
+  packages: write
+
+# Never cancel a run that may already have published.
+concurrency:
+  group: publish-${{ github.ref }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 12.3.4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          # Writes the .npmrc that points @pingid at GitHub Packages and wires NODE_AUTH_TOKEN.
+          registry-url: https://npm.pkg.github.com
+          scope: '@pingid'
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm build
+
+      # The build stamps the version from the root package.json; releases take it from the tag
+      # instead, and dev builds append the run number so each push is a new prerelease.
+      - id: version
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            version=${GITHUB_REF_NAME#v}
+            dist_tag=latest
+          else
+            version=$(node -p 'require("./package.json").version')-dev.$GITHUB_RUN_NUMBER
+            dist_tag=dev
+          fi
+          npm --prefix pkg pkg set version="$version"
+          echo "number=$version" >> "$GITHUB_OUTPUT"
+          echo "dist_tag=$dist_tag" >> "$GITHUB_OUTPUT"
+
+      - run: npm publish ./pkg --tag ${{ steps.version.outputs.dist_tag }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - run: |
+          echo "Published \`@pingid/lib@${{ steps.version.outputs.number }}\`" \
+            "under the \`${{ steps.version.outputs.dist_tag }}\` tag." >> "$GITHUB_STEP_SUMMARY"

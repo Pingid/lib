@@ -1,0 +1,28 @@
+{
+  "name": "@pingid/lib-compose",
+  "version": "1.0.0",
+  "description": "Docker compose typescript abstraction layer.",
+  "scripts": {
+    "test": "vitest run",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "bin": {
+    "ms": "./cli.js"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./env": "./src/env/index.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2"
+  }
+}

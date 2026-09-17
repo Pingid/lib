@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "../../node_modules/.cache/tsconfig.mono.tsbuildinfo",
+    "paths": {
+      "@pingid/lib/*": ["../../lib/*/src/index.ts"]
+    }
+  },
+  "include": ["../../src"],
+  "exclude": ["../../lib"]
+}
