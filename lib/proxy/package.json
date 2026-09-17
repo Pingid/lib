@@ -10,7 +10,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "bun test"
+    "test": "vitest run"
   },
   "keywords": [
     "proxy",
@@ -21,7 +21,8 @@
   ],
   "license": "MIT",
   "devDependencies": {
-    "@types/bun": "^1.1.0",
-    "typescript": "^5.6.0"
+    "@types/bun": "^1.4.2",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
   }
 }

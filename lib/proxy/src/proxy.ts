@@ -1,78 +1,158 @@
-import { requestHeaders, responseHeaders, type Filters } from './headers.ts'
-import * as Route from './route.ts'
+import {
+  forwardPath,
+  forwardUrl,
+  normalizeUpstream,
+  reverseUrl,
+  type ResolvedUpstream,
+  type UpstreamTarget,
+} from './upstream.ts'
+import { RequestPolicy, ResponsePolicy, rebuildRequest } from './request.ts'
+import { forwardedInfo, isSecure } from './forward.ts'
+import { SetCookiePolicy } from './cookie.ts'
+import type { ProxyContext } from './context.ts'
+import { HeaderPolicy } from './header.ts'
+import { ProxyError } from './error.ts'
 
-/** A gateway-level failure — the upstream, not the app behind it, is what went wrong. */
-export class ProxyError extends Error {
-  override name = 'ProxyError'
-  status: number
-  constructor(status: number, message: string, options?: { cause?: unknown }) {
-    super(message, options)
-    this.status = status
-  }
-  /** The plain response to hand back to the client. */
-  get response() {
-    return new Response(this.message, { status: this.status })
-  }
-}
-
-export type ForwardOptions = {
-  filters?: Filters
-  /** Extra request headers, applied last — `x-forwarded-for`, an upstream credential. */
-  headers?: HeadersInit
-  /** Substitute transport. Useful for tests, retries, or a pooled agent. */
-  fetch?: typeof fetch
-}
-
-export interface ProxyOptions extends ForwardOptions {
-  /** Inbound mount path, no trailing slash, e.g. `/proxy/web`. */
-  prefix: string
-  /** Upstream base. A path here roots the upstream under a sub-path. */
-  upstream: URL
-  /** Whether the *client* reached the proxy over TLS. Drives cookie and `x-forwarded-proto` handling. */
-  secure?: boolean
-}
-
-/** Statuses the Response constructor refuses to pair with a body. */
-const BODILESS = new Set([204, 205, 304])
+export type ProxyHandler = (request: Request, context?: ProxyContext) => Promise<Response>
 
 /**
- * Send a request to a route's upstream and return its response, rewritten.
+ * Build a handler that forwards a request to one upstream and returns its
+ * response, rewritten.
  *
- * The request path is taken from the request itself minus `route.prefix`, so a
- * route and a request are all this needs. Bodies stream both ways — nothing is
- * buffered — and redirects are passed through rather than followed, since the
- * client is the one that has to see them.
+ * You match the path; this owns a single upstream. Bodies stream both ways —
+ * nothing is buffered — and redirects are passed through rather than followed,
+ * since the client is the one that has to see them.
  *
- * Throws {@link ProxyError} when the upstream cannot be reached; a client that
- * hangs up mid-flight aborts instead, and its `AbortError` is rethrown as-is.
+ * `context` carries what only the runtime knows: `clientIp` from
+ * `server.requestIP()` / `info.remoteAddr` / `socket.remoteAddress`, and
+ * `trustedPeer` when the immediate peer is a proxy you control. Without the
+ * latter, the client's own `X-Forwarded-*` are discarded rather than extended,
+ * because anyone can send them.
  */
-export const proxy = async (request: Request, opts: ProxyOptions): Promise<Response> => {
-  const from = new URL(request.url)
-  const route = Route.route(opts.upstream, opts.prefix, opts.secure ?? Route.isSecure(request))
-  const target = Route.toUpstream(route, Route.strip(route, from.pathname), from.search)
+export const proxy = (target: UpstreamTarget): ProxyHandler => {
+  const u = normalizeUpstream(target)
 
-  const headers = requestHeaders(request.headers, route, from.host, opts.filters)
-  new Headers(opts.headers).forEach((v, k) => headers.set(k, v))
+  // The user's own policies run last, so a `.url()` tweak lands on the real
+  // upstream target and an `.inspect()` logs the URL actually being fetched.
+  const request = RequestPolicy.create().map((r, context) => ingress(r, context, u))
+  if (u.request) request.use(u.request)
 
-  let upstream: Response
-  try {
-    upstream = await (opts.fetch ?? fetch)(target, {
-      method: request.method,
-      headers,
-      body: request.body,
-      redirect: 'manual',
-      signal: request.signal,
-      // Required to stream a request body; not yet in lib.dom's RequestInit.
-      duplex: 'half',
-    } as RequestInit)
-  } catch (cause) {
-    if (request.signal.aborted) throw cause
-    throw new ProxyError(502, `Bad gateway: ${route.upstream.origin}`, { cause })
+  const response = ResponsePolicy.create().headers(egress(u))
+  if (u.response) response.use(u.response)
+
+  return async (incoming, context = {}) => {
+    // A copy, so a step may use the context as a scratchpad for this request
+    // alone and the caller's object is left as they passed it.
+    const ctx: ProxyContext = { ...context }
+    ctx.clientTls ??= isSecure(incoming, ctx)
+
+    try {
+      const outgoing = await request.applyTo(incoming, ctx)
+      const upstream = await send(outgoing, incoming, u)
+      return await response.applyTo(upstream, ctx)
+    } catch (error) {
+      if (incoming.signal.aborted) throw error
+      if (u.onError) return await u.onError(error, incoming, ctx)
+      if (error instanceof ProxyError) return error.response
+      throw error
+    }
   }
+}
 
-  return new Response(BODILESS.has(upstream.status) ? null : upstream.body, {
-    status: upstream.status,
-    statusText: upstream.statusText,
-    headers: responseHeaders(upstream.headers, route),
-  })
+/**
+ * The request as the upstream should see it.
+ *
+ * `host` and `content-length` go because fetch derives both from the target and
+ * the body it actually sends. `referer` and `origin` go the other way: both
+ * describe the *proxy's* origin, which the upstream has never heard of, and an
+ * app that checks them for CSRF will reject every request until they match.
+ */
+const ingress = (request: Request, context: ProxyContext, u: ResolvedUpstream): Request => {
+  const from = new URL(request.url)
+  const trusted = context.trustedPeer === true
+
+  const headers = HeaderPolicy.create()
+    .excludeHopByHop()
+    .exclude('host', 'content-length')
+    .when(!trusted, (p) => p.excludeTypes('FORWARDING'))
+    .forwarded(forwardedInfo(request, context, u), { mode: trusted ? 'append' : 'replace' })
+    .when(u.via != null, (p) => p.via(u.via!))
+    .mapHeader('referer', (value) => forwardUrl(u, value, from) ?? value)
+    .mapHeader('origin', () => u.origin)
+    .copyOf(request.headers, context)
+
+  if (u.setHost) headers.set('host', u.host)
+
+  // Going through the URL parser normalises `..` away, so a client cannot climb
+  // out of the upstream's base path.
+  const url = new URL(`${forwardPath(u, from.pathname)}${from.search}`, u.origin)
+  return rebuildRequest(request, { url, headers })
+}
+
+/**
+ * The response as the client should see it.
+ *
+ * Hop-by-hop and transport headers go regardless of `rewriteBack`, because they
+ * describe a connection that has already ended: fetch has decoded the body on
+ * the way through, so forwarding the upstream's `Content-Encoding` would leave
+ * the client trying to gunzip plain bytes, and its `Content-Length` no longer
+ * counts what we are about to send. `Alt-Svc` would point the client at the
+ * upstream for the next request outright.
+ *
+ * `rewriteBack` covers the claims that name the upstream's *address*.
+ * `Location` names a path in the upstream's own space. The cookie `Domain`
+ * names a host the client cannot resolve, and would only get the cookie
+ * rejected. The cookie `Path` is the one with teeth: left at the upstream's
+ * `/`, the browser would hand that cookie to every *other* upstream mounted on
+ * this proxy, so it is re-rooted under the mount point instead.
+ *
+ * Security headers are deliberately left alone — an upstream's CSP or HSTS is
+ * its own to set, and `excludeTypes('SECURITY')` is there for callers who are
+ * embedding the upstream and need them gone.
+ */
+const egress = (u: ResolvedUpstream) =>
+  HeaderPolicy.create()
+    .excludeHopByHop()
+    .excludeTypes('TRANSFER')
+    .when(u.rewriteBack, (p) =>
+      p
+        .mapUrls((value) => reverseUrl(u, value))
+        .setCookies(SetCookiePolicy.create().domain(null).pathPrefix(u.basePath, u.stripPrefix).secureFor()),
+    )
+
+/**
+ * Send it, and turn a transport failure into a status.
+ *
+ * A client that hangs up mid-flight is not a gateway failure — its `AbortError`
+ * is rethrown as-is so the runtime can drop the exchange quietly.
+ *
+ * `timeout` is a deadline on the *first byte*, not on the whole exchange: the
+ * timer is cleared once the response head arrives, so a long download or an open
+ * event stream is not cut off by a connect-timeout setting.
+ */
+const send = async (outgoing: Request, incoming: Request, u: ResolvedUpstream): Promise<Response> => {
+  const controller = new AbortController()
+  let expired = false
+  const timer =
+    u.timeout == null
+      ? null
+      : setTimeout(() => {
+          expired = true
+          controller.abort()
+        }, u.timeout)
+
+  const target =
+    timer == null
+      ? outgoing
+      : rebuildRequest(outgoing, { signal: AbortSignal.any([outgoing.signal, controller.signal]) })
+
+  try {
+    return await (u.fetch ?? globalThis.fetch)(target)
+  } catch (cause) {
+    if (incoming.signal.aborted) throw cause
+    if (expired) throw new ProxyError(504, `Gateway timeout: ${u.origin}`, { cause })
+    throw new ProxyError(502, `Bad gateway: ${u.origin}`, { cause })
+  } finally {
+    if (timer != null) clearTimeout(timer)
+  }
 }

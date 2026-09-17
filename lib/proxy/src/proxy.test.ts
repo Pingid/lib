@@ -1,190 +1,375 @@
-import { describe, expect, test } from 'vitest'
-import {
-  proxy,
-  ProxyError,
-  requestHeaders,
-  responseHeaders,
-  rewriteCookie,
-  rewriteLocation,
-  route,
-  toProxy,
-  toUpstream,
-} from './index.ts'
+import { expect, test } from 'vitest'
 
-const r = route('/proxy/web', 'http://app:3000')
-const based = route('/proxy/web', 'http://app:3000/base/')
-const tls = route('/proxy/web', 'http://app:3000', true)
+import { Policy, ProxyError, proxy } from './index.ts'
 
-describe('url mapping', () => {
-  test('round-trips through the upstream and back', () => {
-    expect(toUpstream(r, '/a/b', '?q=1').href).toBe('http://app:3000/a/b?q=1')
-    expect(toProxy(r, '/a/b')).toBe('/proxy/web/a/b')
-  })
+/** An upstream that answers from a function, so the suite needs no socket. */
+const stub = (handler: (request: Request) => Response | Promise<Response>) => async (request: Request) =>
+  handler(request)
 
-  test('honours an upstream base path in both directions', () => {
-    expect(toUpstream(based, '/a').href).toBe('http://app:3000/base/a')
-    expect(toProxy(based, '/base/a')).toBe('/proxy/web/a')
-    expect(toProxy(based, '/base')).toBe('/proxy/web/')
-  })
-
-  test('cannot climb out of the base path', () => {
-    expect(toUpstream(based, '/../../etc').href).toBe('http://app:3000/etc')
-  })
+/** Answers with the path and query it was asked for, so the mapping is visible. */
+const echoUrl = stub((request) => {
+  const url = new URL(request.url)
+  return new Response(url.pathname + url.search)
 })
 
-describe('requestHeaders', () => {
-  const headers = (init: HeadersInit) =>
-    requestHeaders(new Headers(init), r, 'proxy.test', { cookies: ['session', /^_ga/] })
+const get = (path: string) => new Request(`http://proxy.test${path}`)
 
-  test('drops hop-by-hop, host and content-length', () => {
-    const out = headers({
-      connection: 'keep-alive',
-      upgrade: 'h2c',
-      host: 'proxy.test',
-      'content-length': '12',
-      accept: 'text/html',
-    })
-    for (const k of ['connection', 'upgrade', 'host', 'content-length']) expect(out.has(k)).toBe(false)
-    expect(out.get('accept')).toBe('text/html')
-  })
-
-  test('sets the forwarded triple', () => {
-    const out = headers({})
-    expect(out.get('x-forwarded-host')).toBe('proxy.test')
-    expect(out.get('x-forwarded-proto')).toBe('http')
-    expect(out.get('x-forwarded-prefix')).toBe('/proxy/web')
-    expect(requestHeaders(new Headers(), tls, null).get('x-forwarded-proto')).toBe('https')
-  })
-
-  test('filters cookies by name', () => {
-    expect(headers({ cookie: 'session=1; keep=2; _gat=3' }).get('cookie')).toBe('keep=2')
-    expect(headers({ cookie: 'session=1' }).has('cookie')).toBe(false)
-  })
-
-  test('leaves cookies alone without a filter', () => {
-    const out = requestHeaders(new Headers({ cookie: 'session=1' }), r, null)
-    expect(out.get('cookie')).toBe('session=1')
-  })
-
-  test('points referer and origin back at the upstream', () => {
-    const out = headers({
-      referer: 'https://proxy.test/proxy/web/page?x=1',
-      origin: 'https://proxy.test',
-    })
-    expect(out.get('referer')).toBe('http://app:3000/page?x=1')
-    expect(out.get('origin')).toBe('http://app:3000')
-  })
-
-  test('leaves a foreign referer untouched', () => {
-    expect(headers({ referer: 'https://elsewhere.test/x' }).get('referer')).toBe('https://elsewhere.test/x')
-  })
+test('forwards the path and query under the mount point', async () => {
+  const handler = proxy({ origin: 'http://app:3000', stripPrefix: '/proxy/web', fetch: echoUrl })
+  expect(await (await handler(get('/proxy/web/a/b?q=1'))).text()).toBe('/a/b?q=1')
 })
 
-describe('responseHeaders', () => {
-  test('drops framing, transport and origin claims', () => {
-    const out = responseHeaders(
-      new Headers({
-        'x-frame-options': 'DENY',
-        'content-security-policy': "default-src 'none'",
-        'strict-transport-security': 'max-age=1',
-        'content-encoding': 'gzip',
-        'content-length': '9',
-        'content-type': 'text/html',
-      }),
-      r,
-    )
-    const kept: string[] = []
-    out.forEach((_, k) => kept.push(k))
-    expect(kept).toEqual(['content-type'])
-  })
-
-  test('rewrites every set-cookie', () => {
-    const from = new Headers()
-    from.append('set-cookie', 'a=1; Domain=app; Secure; SameSite=None')
-    from.append('set-cookie', 'b=2; HttpOnly')
-    expect(responseHeaders(from, r).getSetCookie()).toEqual(['a=1; SameSite=Lax', 'b=2; HttpOnly'])
-  })
+test('serves the bare mount point as the upstream root', async () => {
+  const handler = proxy({ origin: 'http://app:3000', stripPrefix: '/proxy/web', fetch: echoUrl })
+  expect(await (await handler(get('/proxy/web'))).text()).toBe('/')
 })
 
-describe('rewriteLocation', () => {
-  test('pulls absolute paths and upstream URLs back under the prefix', () => {
-    expect(rewriteLocation('/login', r)).toBe('/proxy/web/login')
-    expect(rewriteLocation('http://app:3000/login?next=/a#f', r)).toBe('/proxy/web/login?next=/a#f')
-    expect(rewriteLocation('/base/login', based)).toBe('/proxy/web/login')
-  })
-
-  test('leaves relative, protocol-relative and foreign targets alone', () => {
-    expect(rewriteLocation('login', r)).toBe('login')
-    expect(rewriteLocation('//cdn.test/x', r)).toBe('//cdn.test/x')
-    expect(rewriteLocation('https://auth.test/x', r)).toBe('https://auth.test/x')
-  })
+test('preserves percent-encoding rather than decoding it into the path', async () => {
+  const handler = proxy({ origin: 'http://app:3000', stripPrefix: '/proxy/web', fetch: echoUrl })
+  expect(await (await handler(get('/proxy/web/a%20b%2Fc'))).text()).toBe('/a%20b%2Fc')
 })
 
-describe('rewriteCookie', () => {
-  test('strips Domain, and Secure only over plain http', () => {
-    expect(rewriteCookie('a=1; Domain=app; Path=/; Secure', r)).toBe('a=1; Path=/')
-    expect(rewriteCookie('a=1; Domain=app; Path=/; Secure', tls)).toBe('a=1; Path=/; Secure')
-  })
-
-  test('downgrades SameSite=None it can no longer honour', () => {
-    expect(rewriteCookie('a=1; SameSite=None', r)).toBe('a=1; SameSite=Lax')
-    expect(rewriteCookie('a=1; SameSite=None', tls)).toBe('a=1; SameSite=None')
-  })
+test('a client cannot climb out of the upstream base path', async () => {
+  const handler = proxy({ origin: 'http://app:3000/base', stripPrefix: '/proxy/web', fetch: echoUrl })
+  expect(await (await handler(get('/proxy/web/../../etc'))).text()).toBe('/base/etc')
+  expect(await (await handler(get('/proxy/web/a/../../../etc'))).text()).toBe('/base/etc')
 })
 
-describe('forward', () => {
-  const upstream = Bun.serve({
-    port: 0,
-    fetch: async (request) => {
-      const url = new URL(request.url)
-      if (url.pathname === '/redirect') return new Response(null, { status: 302, headers: { location: '/done' } })
-      if (url.pathname === '/echo')
-        return new Response(await request.text(), {
-          headers: { 'x-seen-prefix': request.headers.get('x-forwarded-prefix') ?? '' },
-        })
-      if (url.pathname === '/empty') return new Response(null, { status: 204 })
-      return new Response(url.pathname + url.search, {
-        headers: { 'x-frame-options': 'DENY', 'set-cookie': 's=1; Domain=app; Secure' },
-      })
+test('an upstream base path is prepended to what the client asked for', async () => {
+  const handler = proxy({ origin: 'http://app:3000/base', stripPrefix: '/proxy/web', fetch: echoUrl })
+  expect(await (await handler(get('/proxy/web/a'))).text()).toBe('/base/a')
+})
+
+test('streams a request body through rather than buffering it', async () => {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('hello'))
+      controller.close()
     },
   })
-  const live = route('/proxy/web', upstream.url.origin)
-  const get = (path: string) => new Request(`http://proxy.test${path}`)
-
-  test('forwards path and query, rewriting the response', async () => {
-    const res = await proxy(get('/proxy/web/a/b?q=1'), live)
-    expect(await res.text()).toBe('/a/b?q=1')
-    expect(res.headers.has('x-frame-options')).toBe(false)
-    expect(res.headers.getSetCookie()).toEqual(['s=1'])
+  const handler = proxy({
+    origin: 'http://app:3000',
+    fetch: stub(async (request) => new Response(await request.text())),
   })
+  const request = new Request('http://proxy.test/echo', { method: 'POST', body, duplex: 'half' } as RequestInit)
+  expect(await (await handler(request)).text()).toBe('hello')
+})
 
-  test('serves the bare mount point and preserves percent-encoding', async () => {
-    expect(await (await proxy(get('/proxy/web'), live)).text()).toBe('/')
-    expect(await (await proxy(get('/proxy/web/a%20b%2Fc'), live)).text()).toBe('/a%20b%2Fc')
+test('a redirect is passed through rewritten, not followed', async () => {
+  const handler = proxy({
+    origin: 'http://app:3000',
+    stripPrefix: '/proxy/web',
+    fetch: stub(() => new Response(null, { status: 302, headers: { location: '/done' } })),
   })
+  const response = await handler(get('/proxy/web/redirect'))
+  expect(response.status).toBe(302)
+  expect(response.headers.get('location')).toBe('/proxy/web/done')
+})
 
-  test('streams a request body and passes extra headers', async () => {
-    const res = await proxy(new Request('http://proxy.test/proxy/web/echo', { method: 'POST', body: 'hello' }), live, {
-      headers: { 'x-forwarded-for': '1.2.3.4' },
-    })
-    expect(await res.text()).toBe('hello')
-    expect(res.headers.get('x-seen-prefix')).toBe('/proxy/web')
+test('an absolute Location on the upstream comes back as a proxy path', async () => {
+  const handler = proxy({
+    origin: 'http://app:3000',
+    stripPrefix: '/proxy/web',
+    fetch: stub(() => new Response(null, { status: 302, headers: { location: 'http://app:3000/login?next=/a' } })),
   })
+  expect((await handler(get('/proxy/web/x'))).headers.get('location')).toBe('/proxy/web/login?next=/a')
+})
 
-  test('passes redirects through, rewritten, without following them', async () => {
-    const res = await proxy(get('/proxy/web/redirect'), live)
-    expect(res.status).toBe(302)
-    expect(res.headers.get('location')).toBe('/proxy/web/done')
+test('a Location pointing somewhere else is left to go there', async () => {
+  const handler = proxy({
+    origin: 'http://app:3000',
+    stripPrefix: '/proxy/web',
+    fetch: stub(() => new Response(null, { status: 302, headers: { location: 'https://auth.test/x' } })),
   })
+  expect((await handler(get('/proxy/web/x'))).headers.get('location')).toBe('https://auth.test/x')
+})
 
-  test('survives a bodiless status', async () => {
-    expect((await proxy(get('/proxy/web/empty'), live)).status).toBe(204)
-  })
+test('survives a status that is not allowed to carry a body', async () => {
+  const handler = proxy({ origin: 'http://app:3000', fetch: stub(() => new Response(null, { status: 204 })) })
+  const response = await handler(get('/empty'))
+  expect(response.status).toBe(204)
+  expect(response.body).toBe(null)
+})
 
-  test('turns an unreachable upstream into a ProxyError', async () => {
-    const dead = route('/proxy/web', 'http://127.0.0.1:1')
-    const error = await proxy(get('/proxy/web/'), dead).catch((e) => e)
-    expect(error).toBeInstanceOf(ProxyError)
-    expect(error.response.status).toBe(502)
+test('transport headers do not survive, because the body they described did not', async () => {
+  const handler = proxy({
+    origin: 'http://app:3000',
+    fetch: stub(
+      () =>
+        new Response('hi', {
+          headers: { 'content-encoding': 'gzip', 'content-length': '9', 'content-type': 'text/html' },
+        }),
+    ),
   })
+  const response = await handler(get('/'))
+  expect(response.headers.has('content-encoding')).toBe(false)
+  expect(response.headers.has('content-length')).toBe(false)
+  expect(response.headers.get('content-type')).toBe('text/html')
+})
+
+test("the upstream's own security headers are left for it to decide", async () => {
+  const handler = proxy({
+    origin: 'http://app:3000',
+    fetch: stub(() => new Response('hi', { headers: { 'x-frame-options': 'DENY' } })),
+  })
+  expect((await handler(get('/'))).headers.get('x-frame-options')).toBe('DENY')
+})
+
+test('records the client, the host it asked for, and the mount point', async () => {
+  let seen = new Headers()
+  const handler = proxy({
+    origin: 'http://app:3000',
+    stripPrefix: '/proxy/web',
+    fetch: stub((request) => {
+      seen = request.headers
+      return new Response('ok')
+    }),
+  })
+  await handler(get('/proxy/web/a'), { clientIp: '1.2.3.4' })
+  expect(seen.get('x-forwarded-for')).toBe('1.2.3.4')
+  expect(seen.get('x-forwarded-host')).toBe('proxy.test')
+  expect(seen.get('x-forwarded-proto')).toBe('http')
+  expect(seen.get('x-forwarded-prefix')).toBe('/proxy/web')
+})
+
+test('an untrusted peer does not get to say where the request came from', async () => {
+  let seen = new Headers()
+  const handler = proxy({
+    origin: 'http://app:3000',
+    fetch: stub((request) => {
+      seen = request.headers
+      return new Response('ok')
+    }),
+  })
+  const forged = new Request('http://proxy.test/', { headers: { 'x-forwarded-for': '9.9.9.9', via: '1.1 forged' } })
+  await handler(forged, { clientIp: '1.2.3.4' })
+  expect(seen.get('x-forwarded-for')).toBe('1.2.3.4')
+  expect(seen.has('via')).toBe(false)
+})
+
+test('a trusted peer has its chain extended rather than discarded', async () => {
+  let seen = new Headers()
+  const handler = proxy({
+    origin: 'http://app:3000',
+    fetch: stub((request) => {
+      seen = request.headers
+      return new Response('ok')
+    }),
+  })
+  const chained = new Request('http://proxy.test/', { headers: { 'x-forwarded-for': '9.9.9.9' } })
+  await handler(chained, { clientIp: '1.2.3.4', trustedPeer: true })
+  expect(seen.get('x-forwarded-for')).toBe('9.9.9.9, 1.2.3.4')
+})
+
+test('referer and origin are pointed at the upstream that has to understand them', async () => {
+  let seen = new Headers()
+  const handler = proxy({
+    origin: 'http://app:3000',
+    stripPrefix: '/proxy/web',
+    fetch: stub((request) => {
+      seen = request.headers
+      return new Response('ok')
+    }),
+  })
+  const request = new Request('http://proxy.test/proxy/web/a', {
+    headers: { referer: 'http://proxy.test/proxy/web/page?x=1', origin: 'http://proxy.test' },
+  })
+  await handler(request)
+  expect(seen.get('referer')).toBe('http://app:3000/page?x=1')
+  expect(seen.get('origin')).toBe('http://app:3000')
+})
+
+test('a referer from another site is left as it was', async () => {
+  let seen = new Headers()
+  const handler = proxy({
+    origin: 'http://app:3000',
+    stripPrefix: '/proxy/web',
+    fetch: stub((request) => {
+      seen = request.headers
+      return new Response('ok')
+    }),
+  })
+  await handler(new Request('http://proxy.test/proxy/web/a', { headers: { referer: 'https://elsewhere.test/x' } }))
+  expect(seen.get('referer')).toBe('https://elsewhere.test/x')
+})
+
+const cookieUpstream = stub(
+  () => new Response('ok', { headers: { 'set-cookie': 'a=1; Domain=app; Secure; SameSite=None' } }),
+)
+
+test('a cookie the client could not keep is fitted to the leg it arrived on', async () => {
+  const handler = proxy({ origin: 'http://app:3000', fetch: cookieUpstream })
+  expect((await handler(new Request('http://proxy.test/'))).headers.getSetCookie()).toEqual(['a=1; SameSite=Lax'])
+})
+
+test('over TLS the cookie keeps everything but the domain it named', async () => {
+  const handler = proxy({ origin: 'http://app:3000', fetch: cookieUpstream })
+  expect((await handler(new Request('https://proxy.test/'))).headers.getSetCookie()).toEqual([
+    'a=1; Secure; SameSite=None',
+  ])
+})
+
+test('a cookie is re-rooted under the mount point, not left at the upstream root', async () => {
+  const handler = proxy({
+    origin: 'http://app:3000',
+    stripPrefix: '/proxy/web',
+    fetch: stub(() => new Response('ok', { headers: { 'set-cookie': 's=1; Path=/' } })),
+  })
+  expect((await handler(get('/proxy/web/a'))).headers.getSetCookie()).toEqual(['s=1; Path=/proxy/web'])
+})
+
+test('rewriteBack: false hands the upstream response back as it came', async () => {
+  const handler = proxy({
+    origin: 'http://app:3000',
+    stripPrefix: '/proxy/web',
+    rewriteBack: false,
+    fetch: stub(() => new Response('ok', { headers: { location: '/login', 'set-cookie': 'a=1; Domain=app' } })),
+  })
+  const response = await handler(get('/proxy/web/x'))
+  expect(response.headers.get('location')).toBe('/login')
+  expect(response.headers.getSetCookie()).toEqual(['a=1; Domain=app'])
+})
+
+test('an upstream that cannot be reached becomes a gateway error', async () => {
+  const handler = proxy({
+    origin: 'http://app:3000',
+    fetch: () => Promise.reject(new TypeError('fetch failed')),
+  })
+  const response = await handler(get('/'))
+  expect(response.status).toBe(502)
+  expect(await response.text()).toContain('http://app:3000')
+})
+
+test('a client that hangs up is not a gateway failure', async () => {
+  const controller = new AbortController()
+  const handler = proxy({
+    origin: 'http://app:3000',
+    fetch: () => {
+      controller.abort()
+      return Promise.reject(new DOMException('The operation was aborted.', 'AbortError'))
+    },
+  })
+  const request = new Request('http://proxy.test/', { signal: controller.signal })
+  await expect(handler(request)).rejects.toThrow(/aborted/i)
+})
+
+test('an upstream that never answers becomes a timeout', async () => {
+  const handler = proxy({
+    origin: 'http://app:3000',
+    timeout: 5,
+    fetch: (request) =>
+      new Promise((_resolve, reject) => {
+        request.signal.addEventListener('abort', () =>
+          reject(new DOMException('The operation was aborted.', 'AbortError')),
+        )
+      }),
+  })
+  const response = await handler(get('/'))
+  expect(response.status).toBe(504)
+})
+
+test('a policy that refuses the request answers with its own status', async () => {
+  const handler = proxy({
+    origin: 'http://app:3000',
+    request: Policy.request().readOnly(),
+    fetch: echoUrl,
+  })
+  expect((await handler(get('/'))).status).toBe(200)
+  const response = await handler(new Request('http://proxy.test/', { method: 'POST' }))
+  expect(response.status).toBe(405)
+  expect(await response.text()).toContain('POST')
+})
+
+test('onError takes over the conversion when one is given', async () => {
+  let caught: unknown
+  const handler = proxy({
+    origin: 'http://app:3000',
+    fetch: () => Promise.reject(new TypeError('fetch failed')),
+    onError: (error) => {
+      caught = error
+      return new Response('down', { status: 503 })
+    },
+  })
+  const response = await handler(get('/'))
+  expect(response.status).toBe(503)
+  expect(caught).toBeInstanceOf(ProxyError)
+})
+
+test('the request policy runs after retargeting, so it sees the upstream URL', async () => {
+  let seen = ''
+  const handler = proxy({
+    origin: 'http://app:3000',
+    stripPrefix: '/proxy/web',
+    request: Policy.request().inspect((request) => {
+      seen = request.url
+    }),
+    fetch: echoUrl,
+  })
+  await handler(get('/proxy/web/a'))
+  expect(seen).toBe('http://app:3000/a')
+})
+
+test('the response policy sees what the client is about to get', async () => {
+  const handler = proxy({
+    origin: 'http://app:3000',
+    response: Policy.response().status((status) => (status === 404 ? 410 : status)),
+    fetch: stub(() => new Response('gone', { status: 404 })),
+  })
+  expect((await handler(get('/'))).status).toBe(410)
+})
+
+test('setHost sends the upstream its own name', async () => {
+  let seen: string | null = null
+  const handler = proxy({
+    origin: 'http://app:3000',
+    setHost: true,
+    fetch: stub((request) => {
+      seen = request.headers.get('host')
+      return new Response('ok')
+    }),
+  })
+  await handler(get('/'))
+  expect(seen).toBe('app:3000')
+})
+
+test('context reaches a policy step, and the caller’s object is not written to', async () => {
+  let seen: unknown
+  const context = { clientIp: '1.2.3.4' }
+  const handler = proxy({
+    origin: 'http://app:3000',
+    request: Policy.request().inspect((_request, ctx) => {
+      seen = ctx['tenant']
+    }),
+    fetch: echoUrl,
+  })
+  await handler(get('/'), { ...context, tenant: 'acme' })
+  expect(seen).toBe('acme')
+  expect(context).toEqual({ clientIp: '1.2.3.4' })
+})
+
+test('the configured fetch is used instead of the global one', async () => {
+  let called = false
+  const handler = proxy({
+    origin: 'http://app:3000',
+    fetch: stub(() => {
+      called = true
+      return new Response('ok')
+    }),
+  })
+  await handler(get('/'))
+  expect(called).toBe(true)
+})
+
+test('hop-by-hop headers are dropped in both directions', async () => {
+  let seen = new Headers()
+  const handler = proxy({
+    origin: 'http://app:3000',
+    fetch: stub((request) => {
+      seen = request.headers
+      return new Response('ok', { headers: { connection: 'keep-alive', 'keep-alive': 'timeout=5' } })
+    }),
+  })
+  const response = await handler(new Request('http://proxy.test/', { headers: { te: 'trailers' } }))
+  expect(seen.has('te')).toBe(false)
+  expect(response.headers.has('keep-alive')).toBe(false)
 })
