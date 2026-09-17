@@ -1,0 +1,196 @@
+{
+  "name": "@pingid/lib",
+  "version": "0.0.1",
+  "description": "Set of personal libraries",
+  "keywords": [
+    "compose",
+    "docker-compose",
+    "proxy",
+    "reverse-proxy",
+    "fetch"
+  ],
+  "author": "pingid",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Pingid/lib.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Pingid/lib/issues"
+  },
+  "homepage": "https://github.com/Pingid/lib#readme",
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://npm.pkg.github.com"
+  },
+  "dependencies": {
+    "@standard-schema/spec": "^1.1.0",
+    "jiti": "^2.7.0",
+    "@lickle/lock": "^0.0.1",
+    "esbuild": "^0.28.2",
+    "@lickle/trace": "0.0.1-alpha.10"
+  },
+  "main": "./index.cjs",
+  "module": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./index.d.ts",
+        "default": "./index.js"
+      },
+      "require": {
+        "types": "./index.d.cts",
+        "default": "./index.cjs"
+      }
+    },
+    "./api": {
+      "import": {
+        "types": "./api/core/index.d.ts",
+        "default": "./api/core/index.js"
+      },
+      "require": {
+        "types": "./api/core/index.d.cts",
+        "default": "./api/core/index.cjs"
+      }
+    },
+    "./api/cli": {
+      "import": {
+        "types": "./api/cli/index.d.ts",
+        "default": "./api/cli/index.js"
+      },
+      "require": {
+        "types": "./api/cli/index.d.cts",
+        "default": "./api/cli/index.cjs"
+      }
+    },
+    "./api/meta": {
+      "import": {
+        "types": "./api/core/meta.d.ts",
+        "default": "./api/core/meta.js"
+      },
+      "require": {
+        "types": "./api/core/meta.d.cts",
+        "default": "./api/core/meta.cjs"
+      }
+    },
+    "./proxy": {
+      "import": {
+        "types": "./proxy/index.d.ts",
+        "default": "./proxy/index.js"
+      },
+      "require": {
+        "types": "./proxy/index.d.cts",
+        "default": "./proxy/index.cjs"
+      }
+    },
+    "./ship": {
+      "import": {
+        "types": "./ship/index.d.ts",
+        "default": "./ship/index.js"
+      },
+      "require": {
+        "types": "./ship/index.d.cts",
+        "default": "./ship/index.cjs"
+      }
+    },
+    "./vite": {
+      "import": {
+        "types": "./vite/plugin.d.ts",
+        "default": "./vite/plugin.js"
+      },
+      "require": {
+        "types": "./vite/plugin.d.cts",
+        "default": "./vite/plugin.cjs"
+      }
+    },
+    "./vite/plugin/iife": {
+      "import": {
+        "types": "./vite/iife/plugin.d.ts",
+        "default": "./vite/iife/plugin.js"
+      },
+      "require": {
+        "types": "./vite/iife/plugin.d.cts",
+        "default": "./vite/iife/plugin.cjs"
+      }
+    },
+    "./vite/plugin/server": {
+      "import": {
+        "types": "./vite/server/plugin.d.ts",
+        "default": "./vite/server/plugin.js"
+      },
+      "require": {
+        "types": "./vite/server/plugin.d.cts",
+        "default": "./vite/server/plugin.cjs"
+      }
+    },
+    "./vite/plugin/virtual": {
+      "import": {
+        "types": "./vite/virtual/plugin.d.ts",
+        "default": "./vite/virtual/plugin.js"
+      },
+      "require": {
+        "types": "./vite/virtual/plugin.d.cts",
+        "default": "./vite/virtual/plugin.cjs"
+      }
+    },
+    "./vite/server/node": {
+      "import": {
+        "types": "./vite/server/node.d.ts",
+        "default": "./vite/server/node.js"
+      },
+      "require": {
+        "types": "./vite/server/node.d.cts",
+        "default": "./vite/server/node.cjs"
+      }
+    },
+    "./vite/types": {
+      "import": {
+        "types": "./vite/types.d.ts"
+      },
+      "require": {
+        "types": "./vite/types.d.cts"
+      }
+    },
+    "./vite/virtual": {
+      "import": {
+        "types": "./vite/virtual/client.d.ts",
+        "default": "./vite/virtual/client.js"
+      },
+      "require": {
+        "types": "./vite/virtual/client.d.cts",
+        "default": "./vite/virtual/client.cjs"
+      }
+    },
+    "./workspace": {
+      "import": {
+        "types": "./workspace/index.d.ts",
+        "default": "./workspace/index.js"
+      },
+      "require": {
+        "types": "./workspace/index.d.cts",
+        "default": "./workspace/index.cjs"
+      }
+    }
+  },
+  "bin": {
+    "ship": "./ship/cli/cli.js"
+  },
+  "files": [
+    "_virtual",
+    "api",
+    "index.*",
+    "proxy",
+    "ship",
+    "vite",
+    "workspace"
+  ],
+  "peerDependencies": {
+    "vite": "^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0 || ^9.0.0"
+  }
+}

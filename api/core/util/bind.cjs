@@ -1,0 +1,95 @@
+const require_schema = require("./schema.cjs");
+//#region lib/api/src/core/util/bind.ts
+var inputs = (schema) => ({
+	schema,
+	properties: require_schema.properties(schema),
+	own: require_schema.own(schema) !== void 0
+});
+/**
+* Bind `given` onto an object schema's inputs.
+*
+* A supplied value goes through `accept`, so it is checked against the shape the
+* schema describes and then against the schema's own validator when it has one.
+* A default or a fallback does not: a bad declared default is the author's
+* mistake, and surfacing it as a caller-facing refusal would blame the wrong
+* person.
+*
+* `undefined` means absent. `null` is a value, and the floor refuses it where
+* the schema does not describe one — a target whose callers write `null` for
+* "not set" drops those keys before calling here, because that leniency is its
+* own and not every target's.
+*/
+var to = async (to, given, policy = {}) => {
+	const { schema, properties, own } = "~standard" in to ? inputs(to) : to;
+	const reading = policy.reading ?? "typed";
+	const problems = [];
+	const value = {};
+	if (policy.unknown !== "ignore") {
+		const keys = new Set(properties.map((p) => p.key));
+		for (const key of Object.keys(given)) if (!keys.has(key)) problems.push({
+			kind: "unknown",
+			key
+		});
+	}
+	for (const property of properties) {
+		const key = property.key;
+		if (Object.hasOwn(given, key) && given[key] !== void 0) {
+			const taken = await require_schema.accept(given[key], property, reading);
+			if (taken.ok) value[key] = taken.value;
+			else if ("issues" in taken) for (const issue of taken.issues) problems.push({
+				kind: "invalid",
+				key,
+				path: require_schema.issuePath(issue),
+				issue
+			});
+			else problems.push({
+				kind: "invalid",
+				key,
+				path: taken.path,
+				expected: taken.expected
+			});
+			continue;
+		}
+		const stood = require_schema.defaultOf(property.json) ?? policy.fallback?.(property);
+		if (stood !== void 0) value[key] = stood.value;
+		else if (property.required) problems.push({
+			kind: "missing",
+			key
+		});
+	}
+	const expected = properties.map((p) => p.key);
+	if (problems.length > 0) return {
+		ok: false,
+		problems,
+		expected
+	};
+	if (own) return {
+		ok: true,
+		value
+	};
+	const checked = await require_schema.validate(schema, value);
+	if (checked.ok) return {
+		ok: true,
+		value: checked.value
+	};
+	return {
+		ok: false,
+		problems: checked.issues.map(attribute),
+		expected
+	};
+};
+/** An issue about the whole object, read as an issue about one of its inputs. */
+var attribute = (issue) => {
+	const [head, ...rest] = issue.path ?? [];
+	return {
+		kind: "invalid",
+		key: head === void 0 ? "" : String(typeof head === "object" ? head.key : head),
+		path: rest.map((s) => String(typeof s === "object" ? s.key : s)).join("."),
+		issue
+	};
+};
+//#endregion
+exports.inputs = inputs;
+exports.to = to;
+
+//# sourceMappingURL=bind.cjs.map
