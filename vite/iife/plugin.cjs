@@ -1,0 +1,176 @@
+Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+const require_runtime = require("../../_virtual/_rolldown/runtime.cjs");
+const require_vite = require("../_util/vite.cjs");
+const require_shared = require("../_util/shared.cjs");
+const require_file = require("../_util/file.cjs");
+const require_build = require("./build.cjs");
+let node_path = require("node:path");
+node_path = require_runtime.__toESM(node_path, 1);
+//#region lib/vite/src/iife/plugin.ts
+var NS = require_vite.namespace("iife");
+/**
+* Bundles an entry and everything it imports into one self-contained classic
+* script, serves it in dev and emits it as an asset in a build.
+*
+* The entry default-exports its setup and hands back teardown, which is what
+* makes it hot-swappable: on an edit the entry is rebuilt on its own and pushed
+* into the *running* script, where the previous teardown runs before the new
+* setup. Nothing re-registers and no install cycle happens.
+*/
+var iife = (entries, options = {}) => {
+	const pkg = options.pkg ?? "@pingid/lib/vite";
+	const mods = new Map(Object.entries(entries).map(([key, input]) => {
+		if (key.includes("/")) throw new Error(`[pingid:iife] entry key ${JSON.stringify(key)} must not contain "/"`);
+		const it = typeof input === "string" ? { file: input } : input;
+		return [key, {
+			...it,
+			key,
+			raw: it.file,
+			file: it.file,
+			fileName: it.fileName ?? `${key}.js`
+		}];
+	}));
+	let config;
+	let build;
+	/**
+	* Built once per dev-server run, on purpose. The browser byte-compares a
+	* service worker script on every `register()` and update check, so rebuilding
+	* this per request would queue a spurious install behind every edit. The
+	* inlined copy going stale is harmless — the harness pulls current code on
+	* startup.
+	*/
+	const shells = /* @__PURE__ */ new Map();
+	const script = (m) => `${config.base}${m.fileName}`;
+	const hot = (m) => config.command === "serve" ? `${config.base}@iife/${m.key}.js` : null;
+	const shell = (m) => {
+		const found = shells.get(m.key);
+		if (found) return found;
+		const next = build.shell(m.file, hot(m));
+		shells.set(m.key, next);
+		return next;
+	};
+	/**
+	* Never cached. This is the answer to "what is the current code", and the
+	* harness asks on every startup — including after a browser-initiated restart
+	* with no page open, when nothing has invalidated `load`.
+	*/
+	const unit = (m) => build.unit(m.file);
+	return {
+		name: "pingid:iife",
+		enforce: "pre",
+		config: () => ({
+			optimizeDeps: { exclude: [pkg] },
+			ssr: { noExternal: [pkg] }
+		}),
+		configResolved: async (config_) => {
+			config = config_;
+			build = require_build.bundler(config_, options.esbuild);
+			for (const m of mods.values()) m.file = node_path.default.resolve(config_.root, m.raw);
+			if (options.types === false) return;
+			await require_file.File.for(config_.root, options.types ?? "src/iife.d.ts").write(decls([...mods.values()]));
+		},
+		buildStart: async function() {
+			if (config.command !== "build") return;
+			for (const m of mods.values()) {
+				const out = await shell(m);
+				this.emitFile({
+					type: "asset",
+					fileName: m.fileName,
+					source: out.code
+				});
+			}
+		},
+		resolveId: {
+			order: "pre",
+			handler(id) {
+				return NS.match(id, (m) => {
+					if (mods.has(m.name)) return m.encoded;
+					return this.error(`unknown iife entry "${m.name}" — known keys: ${[...mods.keys()].join(", ") || "(none)"}`);
+				});
+			}
+		},
+		load: {
+			order: "pre",
+			async handler(id) {
+				return NS.match(id, async (m) => {
+					const mod = mods.get(m.name);
+					if (!mod) return null;
+					if (config.command === "serve") {
+						const out = await unit(mod);
+						for (const dep of out.deps) this.addWatchFile(dep);
+					}
+					return wrapper(mod, script(mod), hot(mod));
+				});
+			}
+		},
+		configureServer: (server) => {
+			const routes = /* @__PURE__ */ new Map();
+			for (const m of mods.values()) {
+				routes.set(script(m), {
+					mod: m,
+					kind: "shell"
+				});
+				routes.set(`${config.base}@iife/${m.key}.js`, {
+					mod: m,
+					kind: "unit"
+				});
+			}
+			server.middlewares.use((req, res, next) => {
+				const route = routes.get((req.url ?? "").split("?")[0] ?? "");
+				if (!route) return next();
+				(route.kind === "shell" ? shell(route.mod) : unit(route.mod)).then((out) => {
+					res.setHeader("Content-Type", "text/javascript; charset=utf-8");
+					res.setHeader("Cache-Control", "no-store");
+					if (route.kind === "shell") res.setHeader("Service-Worker-Allowed", config.base);
+					res.end(out.code);
+				}, (e) => fail(res, e, config));
+			});
+		}
+	};
+};
+var fail = (res, e, config) => {
+	const message = e instanceof Error ? e.message : String(e);
+	config.logger.error(message);
+	res.statusCode = 500;
+	res.setHeader("Content-Type", "text/plain; charset=utf-8");
+	res.end(message);
+};
+/**
+* What `iife:<key>` resolves to on the page: the script URL, plus — in dev only
+* — the relay that carries vite's own HMR through to the worker.
+*
+* The URL deliberately carries no version, so re-running this body cannot
+* trigger a re-registration; the nudge is the only effect.
+*/
+var wrapper = (mod, url, hot) => {
+	const w = require_shared.Jitt.create();
+	if (hot) w.ln(`import { ping } from ${require_shared.Jitt.str(require_build.sibling("./client.ts"))}`);
+	w.ln(`const url = ${require_shared.Jitt.str(url)}`);
+	w.ln("export default url");
+	if (hot) {
+		w.ln("if (import.meta.hot)");
+		w.block(() => {
+			w.ln("import.meta.hot.accept()");
+			w.ln(`if (import.meta.hot.data.booted) ping(${require_shared.Jitt.str(hot)})`);
+			w.ln("import.meta.hot.data.booted = true");
+		});
+	}
+	return `${w.toString()}\n// ${mod.key}\n`;
+};
+var decls = (mods) => {
+	const w = require_shared.Jitt.create();
+	w.ln("// Generated by @pingid/lib/vite. Do not edit.");
+	mods.forEach((m) => {
+		w.ln(`declare module '${NS.unknown(m.key).id}'`);
+		w.block(() => {
+			w.ln("/** URL of the self-contained script built from this entry. */");
+			w.ln("const url: string");
+			w.ln("export default url");
+		});
+	});
+	return `${w.toString()}\n`;
+};
+//#endregion
+exports.iife = iife;
+
+//# sourceMappingURL=plugin.cjs.map
