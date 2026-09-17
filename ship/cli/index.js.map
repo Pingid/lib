@@ -1,0 +1,1 @@
+{"version":3,"file":"index.js","names":[],"sources":["../../../lib/ship/cli/index.ts"],"sourcesContent":["import { cli } from '../src/config/index.ts'\nimport { load } from './resolve.ts'\n\nconst c = await load()\n\ncli(c)\n"],"mappings":";;AAGU,MAAM,KAAK"}
