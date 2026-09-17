@@ -1,0 +1,93 @@
+name: publish
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+permissions:
+  contents: read
+  packages: write
+
+# Never cancel a run that may already have published.
+concurrency:
+  group: publish-${{ github.ref }}
+
+jobs:
+  publish-branch:
+    runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 12.3.4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm build
+      - run: pnpm ws sync-branch
+
+  # publish:
+  #   runs-on: ubuntu-latest
+  #   env:
+  #     NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+  #     GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #   steps:
+  #     - uses: actions/checkout@v7
+  #     - uses: pnpm/action-setup@v6
+  #       with:
+  #         version: 12.3.4
+  #     - uses: actions/setup-node@v7
+  #       with:
+  #         node-version: 22
+  #         cache: pnpm
+
+  #     - run: pnpm install --frozen-lockfile
+  #     - run: pnpm typecheck
+  #     - run: pnpm build
+
+  #     # The build stamps the version from the root package.json; releases take it from the tag
+  #     # instead, and dev builds append the run number so each push is a new prerelease.
+  #     - id: version
+  #       run: |
+  #         if [ "$GITHUB_REF_TYPE" = tag ]; then
+  #           version=${GITHUB_REF_NAME#v}
+  #           dist_tag=latest
+  #         else
+  #           version=$(node -p 'require("./package.json").version')-dev.$GITHUB_RUN_NUMBER
+  #           dist_tag=dev
+  #         fi
+  #         npm --prefix pkg pkg set version="$version"
+  #         echo "number=$version" >> "$GITHUB_OUTPUT"
+  #         echo "dist_tag=$dist_tag" >> "$GITHUB_OUTPUT"
+
+  #     # Credentials for both registries. npm expands `${VAR}` from the environment as it reads the
+  #     # file, so the tokens never land on disk. Written after install so a missing secret cannot
+  #     # send a bogus token on dependency fetches.
+  #     - run: |
+  #         printf '%s\n' \
+  #           '//registry.npmjs.org/:_authToken=${NPM_TOKEN}' \
+  #           '//npm.pkg.github.com/:_authToken=${GITHUB_PACKAGES_TOKEN}' > ~/.npmrc
+
+ 
+  #     - name: publish to GitHub Packages
+  #       if: ${{ !cancelled() }}
+  #       run: npm publish ./pkg --tag ${{ steps.version.outputs.dist_tag }} --@pingid:registry=https://npm.pkg.github.com
+
+  #     # A scoped registry outranks both `--registry` and `publishConfig`, so it is the one knob
+  #     # that reliably picks the target. The second publish runs even if the first fails: the
+  #     # registries are independent, and a bad token for one should not withhold the other.
+  #     - name: publish to npm
+  #       run: npm publish ./pkg --tag ${{ steps.version.outputs.dist_tag }} --@pingid:registry=https://registry.npmjs.org
+
+  #     - if: ${{ !cancelled() }}
+  #       run: |
+  #         echo "Published \`@pingid/lib@${{ steps.version.outputs.number }}\`" \
+  #           "under the \`${{ steps.version.outputs.dist_tag }}\` tag." >> "$GITHUB_STEP_SUMMARY"

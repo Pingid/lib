@@ -1,0 +1,9 @@
+packages:
+  - 'lib/*'
+
+allowBuilds:
+  esbuild: true
+
+overrides:
+  '@pingid/lib-api': link:lib/api
+  '@pingid/lib-workspace': link:lib/workspace

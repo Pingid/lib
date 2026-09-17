@@ -1,0 +1,21 @@
+{
+  /* The only project that emits. Declarations are generated from the public entries in
+     `src`, following imports into `lib/*`, so `rootDir` has to be the repo root for the
+     output tree to mirror the bundle. */
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "../../node_modules/.cache/tsconfig.dts.tsbuildinfo",
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "rootDir": "../..",
+    "types": ["node"],
+    "paths": {
+      "@pingid/lib/*": ["../../lib/*/src/index.ts"]
+    }
+  },
+  /* `lib/*` is listed even though `src` already reaches it: only files rooted in the program
+     get declarations, and type-only modules are invisible to the bundler's module graph. */
+  "include": ["../../src", "../../lib/*/src"],
+  "exclude": ["**/*.test.ts"]
+}

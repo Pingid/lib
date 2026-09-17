@@ -1,0 +1,27 @@
+{
+  "name": "@pingid/lib-proxy",
+  "version": "0.1.0",
+  "description": "Small composable reverse proxy primitives for the fetch API",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "bun test"
+  },
+  "keywords": [
+    "proxy",
+    "reverse-proxy",
+    "fetch",
+    "bun",
+    "gateway"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/bun": "^1.1.0",
+    "typescript": "^5.6.0"
+  }
+}

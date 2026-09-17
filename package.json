@@ -1,0 +1,62 @@
+{
+  "name": "@pingid/lib",
+  "version": "0.0.1",
+  "description": "Set of personal libraries",
+  "private": true,
+  "keywords": [
+    "compose",
+    "docker-compose",
+    "proxy",
+    "reverse-proxy",
+    "fetch"
+  ],
+  "author": "pingid",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Pingid/lib.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Pingid/lib/issues"
+  },
+  "homepage": "https://github.com/Pingid/lib#readme",
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://npm.pkg.github.com"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "vite build --config workspace/package/vite.config.ts",
+    "typecheck": "tsc -b",
+    "release": "pnpm build && npm publish ./pkg",
+    "ws": "tsx workspace/cli.ts"
+  },
+  "workspaces": [
+    "lib/*"
+  ],
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "@types/node": "^22.20.3",
+    "@typescript/typescript6": "^6.0.2",
+    "prettier": "^3.9.7",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0",
+    "vite-plugin-dts": "^5.1.0"
+  },
+  "prettier": {
+    "semi": false,
+    "singleQuote": true,
+    "printWidth": 120,
+    "trailingComma": "all"
+  },
+  "dependencies": {
+    "@pingid/lib-api": "link:lib/api",
+    "@pingid/lib-workspace": "link:lib/workspace"
+  }
+}
