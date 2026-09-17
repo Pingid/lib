@@ -1,5 +1,5 @@
 import { requestHeaders, responseHeaders, type Filters } from './headers.js'
-import { strip, toUpstream, type Route } from './route.js'
+import { isSecure, strip, toUpstream, type Route } from './route.js'
 
 /** A gateway-level failure — the upstream, not the app behind it, is what went wrong. */
 export class ProxyError extends Error {
@@ -37,7 +37,9 @@ const BODILESS = new Set([204, 205, 304])
  * Throws {@link ProxyError} when the upstream cannot be reached; a client that
  * hangs up mid-flight aborts instead, and its `AbortError` is rethrown as-is.
  */
-export const forward = async (request: Request, route: Route, options: ForwardOptions = {}): Promise<Response> => {
+export const proxy = async (request: Request, to: ToRoute, options: ForwardOptions = {}): Promise<Response> => {
+  const route: Route = toRoute(request, to)
+
   const from = new URL(request.url)
   const target = toUpstream(route, strip(route, from.pathname), from.search)
 
@@ -65,4 +67,12 @@ export const forward = async (request: Request, route: Route, options: ForwardOp
     statusText: upstream.statusText,
     headers: responseHeaders(upstream.headers, route),
   })
+}
+
+type ToRoute = { upstream: string | URL; prefix?: string; secure?: boolean } | string | URL
+const isOb = (t: ToRoute): t is Exclude<ToRoute, string | URL> => typeof t === 'object' && t !== null && 'upstream' in t
+const toUrl = (t: string | URL): URL => (typeof t === 'string' ? new URL(t) : t)
+const toRoute = (request: Request, to: ToRoute): Route => {
+  if (!isOb(to)) return { prefix: '/', upstream: toUrl(to), secure: isSecure(request) }
+  return { prefix: to.prefix ?? '/', upstream: toUrl(to.upstream), secure: to.secure ?? isSecure(request) }
 }
