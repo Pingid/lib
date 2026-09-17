@@ -1,0 +1,16 @@
+Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+const require_text = require("../core/text.cjs");
+const require_error = require("./core/error.cjs");
+const require_arg = require("./arg.cjs");
+const require_cmd = require("./cmd.cjs");
+const require_index = require("./completion/index.cjs");
+const require_macro = require("./macro.cjs");
+const require_cli = require("./cli.cjs");
+exports.Arg = require_arg.Arg;
+exports.Cli = require_cli.Cli;
+exports.CliError = require_error.CliError;
+exports.Cmd = require_cmd.Cmd;
+exports.Completion = require_index.Completion;
+exports.c = require_macro.default;
+exports.format = require_text.format;
+exports.kebab = require_text.kebab;
