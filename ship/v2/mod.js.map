@@ -1,0 +1,1 @@
+{"version":3,"file":"mod.js","names":[],"sources":["../../../lib/ship/src/v2/mod.ts"],"sourcesContent":["export * from './resource.ts'\n"],"mappings":""}
