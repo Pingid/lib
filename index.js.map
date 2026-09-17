@@ -1,0 +1,1 @@
+{"version":3,"file":"index.js","names":[],"sources":["../src/index.ts"],"sourcesContent":["// empty for now\nexport const empty = () => {}\n"],"mappings":";AACA,IAAa,cAAc,CAAC"}
