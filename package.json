@@ -34,7 +34,7 @@
     "build": "vite build --config workspace/package/vite.config.ts",
     "typecheck": "tsc -b",
     "release": "pnpm build && npm publish ./pkg",
-    "ws": "tsx workspace/cli.ts"
+    "ws": "bun workspace/cli.ts"
   },
   "workspaces": [
     "lib/*"

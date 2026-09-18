@@ -5,24 +5,19 @@
   "scripts": {
     "test": "vitest run",
     "build": "tsc",
-    "typecheck": "tsc --noEmit"
-  },
-  "bin": {
-    "ms": "./cli.js"
+    "typecheck": "tsc --noEmit",
+    "generate": "tsx script/types.ts"
   },
   "exports": {
-    ".": "./src/index.ts",
-    "./env": "./src/env/index.ts"
+    ".": "./src/index.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "module",
   "devDependencies": {
+    "json-schema-to-typescript": "^16.0.0",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11"
-  },
-  "dependencies": {
-    "dotenv": "^17.4.2"
   }
 }
