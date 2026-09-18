@@ -8,6 +8,9 @@
     "typecheck": "tsc --noEmit",
     "generate": "tsx script/types.ts"
   },
+  "bin": {
+    "ship": "./cli/cli.ts"
+  },
   "exports": {
     ".": "./src/index.ts"
   },

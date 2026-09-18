@@ -61,7 +61,7 @@ export class ShellError extends Error {
 const l = log.target('workspace:shell')
 
 export interface ShellMacro<O, R> {
-  (cmd: string, args: string[], o: O): Promise<R>
+  (cmd: string, args: string[], o?: O): Promise<R>
   (t: TemplateStringsArray, ...args: any[]): Promise<R>
   (opts: O): ShellMacro<O, R>
 }
@@ -160,5 +160,19 @@ export class Shell {
       (r) => r.code === 0,
       () => false,
     ),
+  )
+
+  /**
+   * {@link run} on the parent's streams: the output goes to the terminal as it is produced and
+   * the status comes back whatever it is. What {@link io} is to {@link sh}, this is to `run` —
+   * for a long or interactive command whose failure is an answer rather than an error.
+   */
+  static io_run = make_macro((cmd: string, args: string[], options: ShellOptions = {}): Promise<ShellResult> =>
+    Shell.run(cmd, args, { ...options, stdio: 'inherit' }),
+  )
+
+  /** {@link ok} on the parent's streams. Never throws for a failed command. */
+  static io_ok = make_macro((cmd: string, args: string[], options: ShellOptions = {}): Promise<boolean> =>
+    Shell.ok(cmd, args, { ...options, stdio: 'inherit' }),
   )
 }

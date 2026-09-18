@@ -1,18 +1,19 @@
 import fs from 'node:fs'
 
-import { root, out, packages, entries, dependBuilder, type Entry } from './util.ts'
+import { root, out, packages, entries, bins, dependBuilder, type Entry } from './util.ts'
 
 /**
  * Emits the publishable manifest into `pkg/`, alongside the bundle written by vite.
  *
  * Static metadata is taken from the root `package.json` minus the keys that describe the repo;
- * everything that has to track the build (entry points, dependencies) is derived here so the
- * two cannot drift.
+ * everything that has to track the build (entry points, commands, dependencies) is derived here
+ * so the two cannot drift.
  */
 export const manifest = async () => {
-  const [base, list, deps, files] = await Promise.all([
+  const [base, list, commands, deps, files] = await Promise.all([
     json(root('package.json')),
     entries(),
+    bins(),
     dependencies(),
     published(),
   ])
@@ -28,6 +29,8 @@ export const manifest = async () => {
     exports: Object.fromEntries(
       list.sort((a, b) => a.subpath.localeCompare(b.subpath)).map((e) => [e.subpath, conditions(e)]),
     ),
+    // A bin is executed, never imported, and `type: module` makes the `.js` the one node runs.
+    bin: some(Object.fromEntries(commands.map((b) => [b.command, out(`${b.name}.js`)]))),
     files,
     ...deps,
   }

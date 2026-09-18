@@ -2,14 +2,20 @@ import { defineConfig } from 'vite'
 import dts from 'vite-plugin-dts'
 import path from 'node:path'
 
-import { entries, aliases, root, tsconfig, flat, hoist } from './util.ts'
+import { entries, aliases, bins, root, tsconfig, flat, hoist } from './util.ts'
 import { manifest, declarations } from './manifest.ts'
+import { esmOnly, executable } from './bin.ts'
 
 const all = await entries()
 const alias = await aliases()
+const commands = await bins()
 
 // Types-only entries have no module to bundle; they reach the package via the dts plugin.
-const entry = Object.fromEntries(all.filter((e) => !e.types).map((e) => [e.name, e.file]))
+const bundled = all.filter((e) => !e.types)
+
+// A bin is bundled like any other entry — what makes it runnable, and what keeps it out of the
+// CJS output, is handled by the `bin` plugin below.
+const entry = Object.fromEntries([...bundled.map((e) => [e.name, e.file]), ...commands.map((b) => [b.name, b.file])])
 
 const dir = root('pkg')
 
@@ -51,6 +57,11 @@ export default defineConfig({
       }),
       afterBuild: declarations,
     }),
+    {
+      name: 'bin',
+      generateBundle: esmOnly(bundled.map((e) => e.name)),
+      closeBundle: () => executable(commands),
+    },
     { name: 'pkg', closeBundle: manifest },
   ],
   build: {
