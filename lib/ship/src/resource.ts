@@ -1,5 +1,6 @@
 import type { Context, ContextValue } from './context.ts'
 import type * as D from './types.d.ts'
+import { branded } from './brand.ts'
 
 export interface Definitions {
   service: D.DefinitionsService
@@ -58,6 +59,8 @@ export interface Ctx<N extends string, O> {
 
 export type Init<S, C> = (c: C) => S | Promise<S>
 
+const RESOURCE: unique symbol = Symbol.for('@pingid/lib-compose:Resource')
+
 /**
  * A single compose resource.
  *
@@ -66,6 +69,10 @@ export type Init<S, C> = (c: C) => S | Promise<S>
  * pass the end of the chain.
  */
 export class Resource<T extends ResourceType, N extends string, O = { name: N }, S = undefined> {
+  /** @see {@link branded} */
+  readonly [RESOURCE] = true
+  static [Symbol.hasInstance] = branded(RESOURCE)
+
   static service<const N extends string>(name: N): Resource<'service', N> {
     return new Resource('service', name)
   }

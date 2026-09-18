@@ -2,6 +2,7 @@ import type { Definitions, Item, Resource, ResourceType, StackRef } from './reso
 import type { ComposeSpecification } from './types.js'
 import { Registry } from './registry.ts'
 import { Scope } from './scope.ts'
+import { branded } from './brand.ts'
 
 /** A compose file. `name` is the project name, which the generated types predate. */
 export type Spec = ComposeSpecification & { name?: string }
@@ -24,8 +25,14 @@ export interface StackOptions {
   project?: string
 }
 
+const STACK: unique symbol = Symbol.for('@pingid/lib-compose:Stack')
+
 /** A named group of resources that becomes one compose file / one docker project. */
 export class Stack<I extends readonly Item[] = readonly Item[]> implements StackRef {
+  /** @see {@link branded} */
+  readonly [STACK] = true
+  static [Symbol.hasInstance] = branded(STACK)
+
   readonly name: string
   readonly items: I
   readonly options: StackOptions

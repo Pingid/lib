@@ -18,6 +18,9 @@
   "author": "",
   "license": "ISC",
   "type": "module",
+  "dependencies": {
+    "jiti": "^2.7.0"
+  },
   "devDependencies": {
     "json-schema-to-typescript": "^16.0.0",
     "typescript": "^7.0.2",

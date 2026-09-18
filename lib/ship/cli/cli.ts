@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { existsSync, mkdtempSync, rmSync, watch, writeFileSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
 import { spawn } from 'node:child_process'
 import { tmpdir } from 'node:os'
+import { createJiti } from 'jiti'
 
 import { Project, Stack, type Spec } from '../src/index.ts'
 
@@ -17,8 +17,8 @@ const REVERSED = new Set(['down', 'stop', 'kill', 'rm'])
 /** Docker commands that own the user's terminal; these get a temp file so stdin stays theirs. */
 const INTERACTIVE = new Set(['exec', 'run', 'attach'])
 
-/** Handled here rather than passed to docker. `__project` is internal, used by --watch. */
-const LOCAL = new Set(['ls', 'build', 'check', 'help', '--help', '-h', '__project'])
+/** Handled here rather than passed to docker. */
+const LOCAL = new Set(['ls', 'build', 'check', 'help', '--help', '-h'])
 
 type Options = {
   command: string
@@ -86,20 +86,25 @@ const findConfig = (explicit?: string): string => {
   throw new Error(`no config found — looked for ${CONFIG_CANDIDATES.join(', ')} in ${process.cwd()}`)
 }
 
-const stripsTypes = (): boolean => {
-  const [major = 0, minor = 0] = process.versions.node.split('.').map(Number)
-  return major > 22 || (major === 22 && minor >= 18)
-}
+/**
+ * Loads configs, with the module cache off so every call re-evaluates the whole graph.
+ *
+ * That is what lets `--watch` reload in-process: node's own loader caches a module for the life
+ * of the process, and a cache-busting query string only ever busts the config itself, leaving
+ * an edit to a file it imports invisible. jiti also transpiles TypeScript, so a `.ts` config no
+ * longer depends on the running node being new enough to strip types.
+ *
+ * Specifiers resolve from the config's own directory, so a config picks up its dependencies
+ * from the project it lives in. One caveat comes with re-evaluation: jiti transforms TypeScript
+ * wherever it finds it, so a config that imports this library's *sources* gets its own copy of
+ * them, and the `instanceof` checks below — which compare against the copy the CLI was built
+ * with — will not recognise what it exports. Importing the built package, as a consumer does,
+ * stays on node's loader and keeps one shared copy.
+ */
+const jiti = createJiti(import.meta.url, { moduleCache: false })
 
 const load = async (configPath: string): Promise<Project> => {
-  if (configPath.endsWith('.ts') && !stripsTypes()) {
-    throw new Error(
-      `Node ${process.versions.node} cannot load a TypeScript config. ` +
-        `Upgrade to 22.18+ or run with: node --import tsx ${process.argv[1]}`,
-    )
-  }
-
-  const module = (await import(pathToFileURL(configPath).href)) as Record<string, unknown>
+  const module = await jiti.import<Record<string, unknown>>(configPath)
   const exported = module['default'] ?? module['stacks'] ?? module['config']
   const value = await (typeof exported === 'function' ? (exported as () => unknown)() : exported)
 
@@ -113,34 +118,6 @@ const load = async (configPath: string): Promise<Project> => {
   const name = spec.name ?? basename(dirname(configPath))
   return { order: [name], edges: [], specs: { [name]: spec }, projects: { [name]: name } }
 }
-
-/**
- * Reload in a child process.
- *
- * A cache-busting query string only busts the config module itself — its static imports stay
- * cached, so an edit to an imported file would reload into an identical spec. A fresh process
- * is the only honest way to get a fresh module graph.
- */
-const reload = (configPath: string): Promise<Project> =>
-  new Promise((done, fail) => {
-    const self = fileURLToPath(import.meta.url)
-    const child = spawn(process.execPath, [self, '__project', '-c', configPath], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-    let out = ''
-    let err = ''
-    child.stdout.setEncoding('utf8').on('data', (chunk: string) => (out += chunk))
-    child.stderr.setEncoding('utf8').on('data', (chunk: string) => (err += chunk))
-    child.on('error', fail)
-    child.on('close', (code) => {
-      if (code !== 0) return fail(new Error(err.trim() || `config reload exited ${code}`))
-      try {
-        done(JSON.parse(out) as Project)
-      } catch {
-        fail(new Error(`config reload produced invalid output: ${out.slice(0, 200)}`))
-      }
-    })
-  })
 
 const select = (built: Project, names: string[]): string[] => {
   if (names.length === 0) return built.order
@@ -262,11 +239,6 @@ const main = async (): Promise<number> => {
   const projectDir = resolve(options.projectDir ?? dirname(configPath))
   let built = await load(configPath)
 
-  if (options.command === '__project') {
-    process.stdout.write(JSON.stringify(built))
-    return 0
-  }
-
   if (options.command === 'ls') {
     for (const name of built.order) {
       const spec = built.specs[name]!
@@ -329,7 +301,7 @@ const main = async (): Promise<number> => {
     }
     running = true
     try {
-      built = await reload(configPath)
+      built = await load(configPath)
       await run(built, options, projectDir)
     } catch (error) {
       process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)

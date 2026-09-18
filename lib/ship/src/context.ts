@@ -1,5 +1,13 @@
+import { branded } from './brand.ts'
+
+const CONTEXT: unique symbol = Symbol.for('@pingid/lib-compose:Context')
+
 /** A typed injection key. Values are supplied per `compose()` / `project()` call. */
 export class Context<T = any> {
+  /** @see {@link branded} */
+  readonly [CONTEXT] = true
+  static [Symbol.hasInstance] = branded(CONTEXT)
+
   readonly label: string
 
   private constructor(label: string) {
@@ -15,7 +23,13 @@ export class Context<T = any> {
   }
 }
 
+const CONTEXT_VALUE: unique symbol = Symbol.for('@pingid/lib-compose:ContextValue')
+
 export class ContextValue<T = any> {
+  /** @see {@link branded} */
+  readonly [CONTEXT_VALUE] = true
+  static [Symbol.hasInstance] = branded(CONTEXT_VALUE)
+
   readonly context: Context<T>
   readonly value: T
 
