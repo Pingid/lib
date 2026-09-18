@@ -1,7 +1,7 @@
 import path from 'node:path'
 
 import { op, ns, optional, string } from '@pingid/lib-api'
-import { git } from '@pingid/lib-workspace'
+import { git, Shell } from '@pingid/lib-workspace'
 import { run } from '@pingid/lib-api/cli'
 
 const root = (...parts: string[]) => path.join(import.meta.dirname, '../', ...parts)
@@ -20,22 +20,28 @@ const sync_branch = op({
   in: {
     branch: optional(string()).describe('The branch to push the build to'),
   },
-  handle: async () => {
+  handle: async ({ branch = 'pkg' }) => {
     const repo = await git.Repo.discover()
 
-    const tree = await git.WorkTree.create(repo, 'pkg', root('.cache/.worktrees/pkg'))
+    await using tree = await repo.worktree(branch, { path: root('.cache/.worktrees', branch) })
 
-    try {
-      await Bun.$.cwd(tree.path)`find . -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +`
-      await Bun.$.cwd(root())`cp -R ./pkg/ ${tree.path}`
-      await Bun.$.cwd(tree.path)`git add .`
-      await Bun.$.cwd(tree.path)`git commit --amend --no-edit`
-      await Bun.$.cwd(tree.path)`git push --force`
-    } catch (e) {
-      console.error(e)
-    } finally {
-      await tree.remove()
-    }
+    await Shell.io`find ${tree.dir} -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +`
+    await Shell.io`cp -R ${repo.dir}/pkg/ ${tree.dir}`
+
+    await tree.add()
+
+    // Skip when the staged tree matches the last build.
+    if (!(await tree.staged())) return console.log('No changes; skipping build')
+
+    const tags = await tree.tags('build-*')
+    const last = tags.map((t) => parseInt(t.slice('build-'.length), 10)).filter(Number.isFinite)
+    const tag = `build-${Math.max(0, ...last) + 1}`
+
+    // The branch carries one flattened commit, so each build amends it rather than stacking.
+    await tree.commit().amend().no_edit()
+    await tree.tag(tag)
+    await tree.push('origin', `HEAD:${branch}`).force()
+    await tree.push('origin', tag)
   },
 })
 

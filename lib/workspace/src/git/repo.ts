@@ -1,138 +1,165 @@
-import { spawn } from 'node:child_process'
-import path from 'node:path'
+import { Shell, ShellError, env } from '../util/index.ts'
 
-export class Repo {
-  static async discover(p: { owner?: string; repo?: string; ref?: string } = {}) {
-    const d = p.owner && p.repo ? undefined : await discover_name()
-    const owner = p.owner || d?.owner
-    const repo = p.repo || d?.repo
-    if (!owner || !repo) throw new Error('Could not determine GitHub owner/repo')
-    const ref = p.ref || env('GITHUB_SHA') || (await sh('git', ['rev-parse', 'HEAD']))
-    return new Repo(owner, repo, ref)
+import * as util from './util/index.ts'
+import * as cmd from './cmd.ts'
+
+/**
+ * A git working directory. Every command is bound to `dir`, so nothing here can quietly act
+ * on whichever repository the process happens to be sitting in.
+ */
+export class Git {
+  /** The token to authenticate remotes with. Environment-derived, so it is not per-checkout. */
+  static token = (): Promise<string> => util.discover_token()
+
+  public readonly dir: string
+  constructor(dir: string) {
+    this.dir = dir
+  }
+
+  // ---------------- Commands --------------------------
+  // Each returns a lazy builder: nothing runs until it is awaited, and further options can
+  // be chained on first — `repo.commit('wip').amend().no_edit()`.
+
+  /** Stage `pathspec`, or everything when none is given. */
+  add = (...pathspec: string[]) =>
+    pathspec.length ? cmd.add({ cwd: this.dir, pathspec }) : cmd.add({ cwd: this.dir, all: true })
+  commit = (message?: string) => cmd.commit({ cwd: this.dir, message })
+  tag = (name?: string, ref?: string) => cmd.tag({ cwd: this.dir, name, ref })
+  push = (remote?: string, ...refspec: string[]) => cmd.push({ cwd: this.dir, remote, refspec })
+  fetch = (remote?: string, ...refspec: string[]) => cmd.fetch({ cwd: this.dir, remote, refspec })
+  branch = (name?: string, start?: string) => cmd.branch({ cwd: this.dir, name, start })
+  checkout = (ref?: string) => cmd.checkout({ cwd: this.dir, ref })
+  status = () => cmd.status({ cwd: this.dir })
+  diff = (ref?: string) => cmd.diff({ cwd: this.dir, ref })
+  rev_parse = (ref?: string) => cmd.rev_parse({ cwd: this.dir, ref })
+
+  /** Escape hatch for anything without a recipe. Resolves with trimmed stdout. */
+  git = (...args: string[]): Promise<string> => Shell.sho('git', args, { cwd: this.dir })
+
+  // ---------------- Queries --------------------------
+
+  /** The absolute path of the working tree root, which `dir` may be a subdirectory of. */
+  root = (): Promise<string> => this.git('rev-parse', '--show-toplevel')
+
+  /** The commit a ref resolves to. */
+  head = (ref: string = 'HEAD'): Promise<string> => this.git('rev-parse', ref)
+
+  /** The checked-out branch, or `HEAD` when detached. */
+  current_branch = (): Promise<string> => this.git('rev-parse', '--abbrev-ref', 'HEAD')
+
+  /** Tag names, optionally narrowed by a glob such as `build-*`. */
+  tags = (filter?: string): Promise<string[]> => this.git('tag', '--list', ...(filter ? [filter] : [])).then(lines)
+
+  /** Local branch names. */
+  branches = (): Promise<string[]> => this.git('for-each-ref', '--format=%(refname:short)', 'refs/heads').then(lines)
+
+  /** Whether a ref exists and resolves. */
+  has = (ref: string): Promise<boolean> => Shell.ok('git', ['rev-parse', '--verify', '--quiet', ref], { cwd: this.dir })
+
+  /** Whether the working tree has any change at all, staged or not, tracked or not. */
+  dirty = (): Promise<boolean> => this.git('status', '--porcelain').then((out) => out.length > 0)
+
+  /** Whether anything is staged — the question `git diff --cached --quiet` answers by exit code. */
+  staged = async (): Promise<boolean> => {
+    const r = await Shell.run('git', ['diff', '--cached', '--quiet'], { cwd: this.dir })
+    if (r.code === 0) return false
+    if (r.code === 1) return true
+    throw new ShellError(r)
+  }
+
+  /** The URL of a remote, `origin` by default. */
+  remote_url = (name: string = 'origin'): Promise<string> => this.git('remote', 'get-url', name)
+
+  /** Every worktree attached to this repository, the main one first. */
+  worktrees = (): Promise<util.WorkTreeEntry[]> => util.list_work_trees(this.dir)
+}
+
+const lines = (out: string) =>
+  out
+    .split('\n')
+    .map((x) => x.trim())
+    .filter(Boolean)
+
+/** A checkout that also knows which remote repository it is, and at what commit. */
+export class Repo extends Git {
+  /**
+   * Identify the repository containing `dir` (the process directory by default), taking the
+   * name from CI, the `origin` remote or `gh`, in that order. Anything passed explicitly wins.
+   */
+  static async discover(p: { owner?: string; repo?: string; ref?: string; dir?: string } = {}): Promise<Repo> {
+    const from = p.dir ?? process.cwd()
+    const dir = await Shell.sho('git', ['rev-parse', '--show-toplevel'], { cwd: from }).catch(() => undefined)
+    if (!dir) throw new Error(`Not a git repository: ${from}`)
+
+    const named = p.owner && p.repo ? undefined : await util.discover_name(dir)
+    const owner = p.owner || named?.owner
+    const repo = p.repo || named?.repo
+    if (!owner || !repo) {
+      throw new Error('Could not determine GitHub owner/repo. Set GITHUB_REPOSITORY or add an `origin` remote.')
+    }
+
+    const ref = p.ref || env('GITHUB_SHA') || (await Shell.sho('git', ['rev-parse', 'HEAD'], { cwd: dir }))
+    return new Repo(owner, repo, ref, dir)
   }
 
   public readonly owner: string
   public readonly repo: string
+  /** The commit (or branch, for a worktree) this instance stands for. */
   public readonly ref: string
-  constructor(owner: string, repo: string, ref: string) {
+
+  constructor(owner: string, repo: string, ref: string, dir: string) {
+    super(dir)
     this.owner = owner
     this.repo = repo
     this.ref = ref
   }
 
-  async token(): Promise<string> {
-    return discover_token()
+  /** `owner/repo`. */
+  get name(): string {
+    return `${this.owner}/${this.repo}`
   }
 
-  async origin(): Promise<string> {
-    return origin_of(this.owner, this.repo)
+  /** The URL to push to: this checkout's `origin` when it matches, else the canonical one. */
+  origin(): Promise<string> {
+    return util.origin_of(this.owner, this.repo, this.dir)
+  }
+
+  /** Check `branch` out into its own directory, branching from this ref if it is new. */
+  worktree(branch: string, opts: { path?: string; force?: boolean } = {}): Promise<WorkTree> {
+    return WorkTree.create(this, branch, opts)
   }
 }
 
+/**
+ * A second checkout of the same repository on another branch, so a build can be committed
+ * without disturbing the tree you are working in.
+ */
 export class WorkTree extends Repo {
   public readonly base: Repo
-  public readonly path: string
 
-  static async create(base: Repo, branch: string, path?: string) {
-    const pth = await create_work_tree({ base: base.ref, branch, path, force: true })
-    return new WorkTree(base, new Repo(base.owner, base.repo, branch), pth)
-  }
-
-  // static async create(base: Repo, ) {
-  constructor(base: Repo, tree: Repo, path: string) {
-    super(tree.owner, tree.repo, tree.ref)
-    this.base = base
-    this.path = path
-  }
-
-  async remove(force: boolean = true) {
-    await remove_work_tree(this.path, force)
-  }
-}
-
-const create_work_tree = async (opts: { base: string; branch: string; path?: string; force?: boolean }) => {
-  const pth = opts.path || root('.worktrees', opts.branch)
-
-  if (opts.force) await remove_work_tree(pth, true).catch(() => {})
-
-  // Check if branch exists
-  try {
-    await sh('git', ['rev-parse', '--verify', opts.branch])
-    console.log('Branch exists')
-  } catch (e) {
-    console.log('Branch does not exist, creating it')
-    await sh('git', ['branch', '-b', opts.branch, opts.base])
-  }
-
-  await sh('git', ['worktree', 'add', pth, opts.branch])
-
-  return pth
-}
-
-const root = (...parts: string[]) => path.join(env('GITHUB_WORKSPACE') || process.cwd(), ...parts)
-
-const remove_work_tree = async (path: string, force: boolean) => {
-  await sh('git', ['worktree', 'remove', path, force ? '--force' : ''])
-}
-const discover_token = async (): Promise<string> => {
-  const token = env('GITHUB_TOKEN') || env('GH_TOKEN') || (await sh('gh', ['auth', 'token']).catch(() => ''))
-  if (!token) throw new Error('GitHub token not found. Set GITHUB_TOKEN or run `gh auth login`.')
-  return token
-}
-
-const discover_name = async (): Promise<{ owner: string; repo: string } | undefined> => {
-  const e = env('GITHUB_REPOSITORY') || env('GH_REPO')
-  if (e) return parse_origin(e)
-  try {
-    return parse_origin(await sh('git', ['remote', 'get-url', 'origin']))
-  } catch {
-    /* fall through to gh */
-  }
-  return parse_origin(JSON.parse(await sh('gh', ['repo', 'view', '--json', 'nameWithOwner'])).nameWithOwner)
-}
-
-const env = (name: string) => process.env[name]
-
-const origin_of = async (owner: string, repo: string) => {
-  try {
-    const parsed = parse_origin(await sh('git', ['remote', 'get-url', 'origin']))
-    if (parsed?.owner === owner && parsed?.repo === repo) return parsed.origin
-  } catch {
-    /* fall through */
-  }
-  return default_origin(owner, repo)
-}
-
-const default_origin = (owner: string, repo: string) =>
-  `${(env('GITHUB_SERVER_URL') || 'https://github.com').replace(/\/$/, '')}/${owner}/${repo}.git`
-
-const parse_origin = (url: string): { owner: string; repo: string; origin: string } | undefined => {
-  const origin = url.trim().replace(/\/$/, '')
-  const full = origin.match(/^(?:https?:\/\/|git@|ssh:\/\/git@)([^/:]+)[:/]([^/]+)\/([^/]+?)(?:\.git)?$/)
-  if (full) return { owner: full[2]!, repo: full[3]!, origin }
-  const name = origin.match(/^([^/]+)\/([^/]+)$/)
-  if (name) return { owner: name[1]!, repo: name[2]!, origin: default_origin(name[1]!, name[2]!) }
-  return undefined
-}
-
-/** Run `cmd` and capture its stdout. Throws with stderr on a non-zero exit. */
-export const sh = async (cmd: string, args: string[], options: { cwd?: string } = {}): Promise<string> => {
-  const proc = spawn(cmd, args, { stdio: 'pipe', env: process.env, ...options })
-  const stdout: Buffer[] = []
-  const stderr: Buffer[] = []
-  proc.stdout.on('data', (data) => stdout.push(data))
-  proc.stderr.on('data', (data) => stderr.push(data))
-
-  const join = (buffers: Buffer[]) =>
-    buffers
-      .map((b) => b.toString('utf-8'))
-      .join('')
-      .trim()
-  return new Promise<string>((resolve, reject) => {
-    proc.on('close', (code) => {
-      if (code !== 0) reject(new Error(`${cmd} ${args.join(' ')} failed: ${join(stderr)}`))
-      else resolve(join(stdout))
+  static async create(base: Repo, branch: string, opts: { path?: string; force?: boolean } = {}): Promise<WorkTree> {
+    const dir = await util.create_work_tree({
+      cwd: base.dir,
+      base: base.ref,
+      branch,
+      path: opts.path,
+      force: opts.force ?? true,
     })
-    proc.on('error', (error) => reject(error))
-  })
+    return new WorkTree(base, new Repo(base.owner, base.repo, branch, dir))
+  }
+
+  constructor(base: Repo, tree: Repo) {
+    super(tree.owner, tree.repo, tree.ref, tree.dir)
+    this.base = base
+  }
+
+  /** Detach the worktree and delete its directory. The branch itself is kept. */
+  async remove(force: boolean = true): Promise<void> {
+    await util.remove_work_tree(this.dir, { cwd: this.base.dir, force })
+  }
+
+  /** `await using tree = await repo.worktree('pkg')` cleans up however the block exits. */
+  async [Symbol.asyncDispose](): Promise<void> {
+    await this.remove()
+  }
 }

@@ -60,11 +60,11 @@ importers:
         specifier: ^4.6.4
         version: 4.6.5
 
-  lib/compose:
+  lib/proxy:
     devDependencies:
-      json-schema-to-typescript:
-        specifier: ^16.0.0
-        version: 16.0.0
+      '@types/bun':
+        specifier: ^1.4.2
+        version: 1.4.2
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
@@ -72,11 +72,11 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@22.20.3)(vite@8.3.0(@types/node@22.20.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13))
 
-  lib/proxy:
+  lib/ship:
     devDependencies:
-      '@types/bun':
-        specifier: ^1.4.2
-        version: 1.4.2
+      json-schema-to-typescript:
+        specifier: ^16.0.0
+        version: 16.0.0
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
@@ -110,6 +110,10 @@ importers:
         version: 8.3.0(@types/node@26.6.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)
 
   lib/workspace:
+    dependencies:
+      '@lickle/trace':
+        specifier: 0.0.1-alpha.10
+        version: 0.0.1-alpha.10
     devDependencies:
       '@types/node':
         specifier: ^22.20.3
@@ -327,6 +331,10 @@ packages:
   '@lickle/lock@0.0.1':
     resolution: {integrity: sha512-PkpWvEDUoVm7wnovDnUzZKUHuQxFyNZoOx2t+lgrYCXVTksnazCvteryeZpQ8dRpe5taLTvktXNbCKsU82+yPQ==}
     engines: {node: '>= 6.14.2 < 7 || >= 8.11.2 < 9 || >= 9.11.0 < 10 || >= 10.0.0'}
+
+  '@lickle/trace@0.0.1-alpha.10':
+    resolution: {integrity: sha512-AT3TPuxZVzgQyr5B8a+zRtXOzo/AwsAAjljUl0zL8sP6C0I6Bif7LPdRmKRfQhR5S5/f17AS6OZW74dkYL3B3g==}
+    engines: {node: '>=20.16'}
 
   '@oxc-project/types@0.149.0':
     resolution: {integrity: sha512-Efcc+iF0j3Bf67YjEqIqWXbX5XddXoK/Mw4K1/JuXwRCZ8N16VR7iT23nlCc9XrveFVh/E5Rqs2StT0V8v9LdA==}
@@ -1196,6 +1204,8 @@ snapshots:
       '@lickle/lock-darwin-x64': 0.0.1
       '@lickle/lock-linux-x64-gnu': 0.0.1
       '@lickle/lock-win32-x64-msvc': 0.0.1
+
+  '@lickle/trace@0.0.1-alpha.10': {}
 
   '@oxc-project/types@0.149.0': {}
 

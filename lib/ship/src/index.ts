@@ -129,7 +129,7 @@ export class Resource<T extends ResourceType, N extends string, O = { name: N },
 }
 
 export class Context<T = any> {
-  static define<T extends Record<string, any> = Record<string, never>>() {
+  static define<T>() {
     return new Context<T>()
   }
 

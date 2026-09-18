@@ -2,8 +2,7 @@
 
 Set of personal libraries, published as one package with a subpath per library.
 
-- **[`@pingid/lib/compose`](https://github.com/Pingid/lib/tree/main/lib/compose)** — Docker Compose
-  specs as typed, composable fragments. Environment interpolation lives in `/compose/env`.
+- **[`@pingid/lib/ship`](https://github.com/Pingid/lib/tree/main/lib/ship)** — Docker compose typescript abstraction
 - **[`@pingid/lib/proxy`](https://github.com/Pingid/lib/blob/main/lib/proxy/README.md)** — A reverse
   proxy over the fetch API: one handler per upstream, with composable policies for headers, cookies
   and provenance.

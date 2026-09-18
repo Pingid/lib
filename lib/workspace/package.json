@@ -1,16 +1,27 @@
 {
   "name": "@pingid/lib-workspace",
   "version": "0.0.1-dev.1",
-  "description": "",
-  "scripts": {
-    "test": "vitest run"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "description": "Git and repository primitives for workspace tooling",
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "keywords": [
+    "git",
+    "worktree",
+    "repository",
+    "monorepo",
+    "shell"
+  ],
+  "author": "pingid",
+  "license": "ISC",
+  "dependencies": {
+    "@lickle/trace": "0.0.1-alpha.10"
   },
   "devDependencies": {
     "@types/node": "^22.20.3",
