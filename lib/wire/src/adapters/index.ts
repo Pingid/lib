@@ -21,7 +21,7 @@ export type { Clock, FakeClock } from './clock.ts'
 export { defineNode } from './define.ts'
 export type { DefineOptions, Host, Transport } from './define.ts'
 
-export { source } from './source.ts'
+export { source, adders } from './source.ts'
 export type { Adder, Source, SourceHost, SourceOptions } from './source.ts'
 
 export { reconnect } from './reconnect.ts'

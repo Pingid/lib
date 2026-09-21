@@ -14,9 +14,9 @@ const build = op({
   },
 })
 
-const sync_branch = op({
-  name: 'sync-branch',
-  description: 'Build source and commit flattened into a branch',
+const publish = op({
+  name: 'publish',
+  description: 'Build source and publish to dev release branch',
   in: {
     branch: optional(string()).describe('The branch to push the build to'),
   },
@@ -42,13 +42,15 @@ const sync_branch = op({
     await tree.tag(tag)
     await tree.push('origin', `HEAD:${branch}`).force()
     await tree.push('origin', tag)
+
+    console.log(`Built and pushed to ${branch} and tagged ${tag}`)
   },
 })
 
 const api = ns({
   name: 'workspace',
   description: 'Workspace CLI',
-  operations: [build, sync_branch],
+  operations: [build, publish],
 })
 
 run(api, process.argv.slice(2))

@@ -43,10 +43,10 @@ export interface Socket {
  * })
  * ```
  */
-export interface SocketsOptions<S, T> {
+export interface SocketsOptions<S, T, M extends Meta = Meta> {
   encode?: ((msg: T) => unknown) | undefined
   decode?: ((data: unknown) => T) | undefined
-  meta?: ((socket: S) => Meta) | undefined
+  meta?: ((socket: S) => M) | undefined
   onError?: ((err: unknown) => void) | undefined
 }
 
@@ -59,8 +59,8 @@ export interface SocketsOptions<S, T> {
  * server.on('connection', (socket) => wire.open(socket, { name: socket.remoteAddress }))
  * ```
  */
-export interface Sockets<S, T> {
-  open(socket: S, meta?: Meta): void
+export interface Sockets<S, T, M extends Meta = Meta> {
+  open(socket: S, meta?: M): void
   message(socket: S, data: unknown): void
   close(socket: S): void
   /**
@@ -98,7 +98,9 @@ type Event<S> =
  * })
  * ```
  */
-export const sockets = <S extends Socket, T>(opts: SocketsOptions<S, T> = {}): Sockets<S, T> => {
+export const sockets = <S extends Socket, T, M extends Meta = Meta>(
+  opts: SocketsOptions<S, T, M> = {},
+): Sockets<S, T, M> => {
   const encode = opts.encode ?? ((msg: T) => JSON.stringify(msg))
   const decode = opts.decode ?? ((data: unknown) => JSON.parse(String(data)) as T)
   const sinks = new Set<(event: Event<S>) => void>()
@@ -156,3 +158,86 @@ export const sockets = <S extends Socket, T>(opts: SocketsOptions<S, T> = {}): S
     }, opts),
   }
 }
+
+// export class Sockets<S extends Socket, T> implements ISockets<S, T> {
+//   private readonly encode: (msg: T) => unknown
+//   private readonly decode: (data: unknown) => T
+//   private readonly sinks: Set<(event: Event<S>) => void>
+//   private readonly emit: (event: Event<S>) => void
+//   private readonly opts: SocketsOptions<S, T>
+
+//   private constructor(opts: SocketsOptions<S, T> = {}) {
+//     this.opts = opts
+//     this.encode = opts.encode ?? ((msg: T) => JSON.stringify(msg))
+//     this.decode = opts.decode ?? ((data: unknown) => JSON.parse(String(data)) as T)
+//     this.sinks = new Set<(event: Event<S>) => void>()
+//     this.emit = (event: Event<S>) => {
+//       for (const fn of [...this.sinks]) fn(event)
+//     }
+//     this.source = () => this.createSource()
+//   }
+
+//   static create<S extends Socket, T>(into: Adder<unknown>, opts: SocketsOptions<S, T> = {}): ISockets<S, T> {
+//     return new Sockets(opts)
+//   }
+
+//   open(socket: S, meta?: Meta): void {
+//     this.emit({ kind: 'open', socket, meta })
+//   }
+//   message(socket: S, data: unknown): void {
+//     this.emit({ kind: 'message', socket, data })
+//   }
+//   close(socket: S): void {
+//     this.emit({ kind: 'close', socket })
+//   }
+//   error(socket: S, err: unknown): void {
+//     this.emit({ kind: 'error', socket, err })
+//   }
+//   source(): Source<T> {
+//     return this.createSource()
+//   }
+//   private createSource(): Source<T> {
+//     const s = source<T>((host) => {
+//       const hosts = new WeakMap<Socket, Host<T>>()
+//       const fn = (event: Event<S>) => {
+//         if (event.kind === 'open') {
+//           const node = defineNode<T>(
+//             (h) => {
+//               hosts.set(event.socket, h)
+//               return {
+//                 send: (msg) => {
+//                   try {
+//                     ;(event.socket.send as (data: unknown) => unknown)(this.encode(msg))
+//                     return true
+//                   } catch (err) {
+//                     h.fail(err)
+//                     return false
+//                   }
+//                 },
+//                 close: () => void event.socket.close(),
+//                 // Only its own entry: a second `open` must not be unrouted by the first close.
+//                 release: () => void (hosts.get(event.socket) === h && hosts.delete(event.socket)),
+//               }
+//             },
+//             { onError: this.opts.onError },
+//           )
+//           host.offer(node, { ...this.opts.meta?.(event.socket), ...event.meta })
+//           return
+//         }
+//         const h = hosts.get(event.socket)
+//         if (event.kind === 'error') return (h ?? host).fail(event.err)
+//         if (!h) return
+//         if (event.kind === 'close') return h.shut()
+//         try {
+//           h.deliver(this.decode(event.data))
+//         } catch (err) {
+//           h.fail(err)
+//         }
+//       }
+//       this.sinks.add(fn)
+//       return () => void this.sinks.delete(fn)
+//     }, this.opts)
+
+//     return s
+//   }
+// }

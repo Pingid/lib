@@ -23,6 +23,21 @@ export interface Adder<T> {
 }
 
 /**
+ * @example
+ * ```ts
+ * const adders: Adder<Frame> = adders(fromSocket(socket), fromWorker(worker))
+ * ```
+ */
+export const adders = <T>(...adders: Adder<T>[]): Adder<T> => {
+  return {
+    add: (node, meta) => {
+      const offs = adders.map((adder) => adder.add(node, meta))
+      return () => offs.forEach((off) => off())
+    },
+  }
+}
+
+/**
  * Something that feeds a hub until you stop it.
  *
  * @example
