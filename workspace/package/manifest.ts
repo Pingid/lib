@@ -107,18 +107,31 @@ const copy = (name: string) => fs.promises.copyFile(root(name), root('pkg', name
 const retarget = (content: string, ext: 'js' | 'cjs') =>
   content.replace(/((?:from|import\()\s*['"]\.[^'"]*?)(?:\.d)?\.(?:ts|js)(['"])/g, `$1.${ext}$2`)
 
-/** Union of the runtime and peer dependencies declared across the workspace. */
+/**
+ * Union of the runtime and peer dependencies declared across the workspace.
+ *
+ * `peerDependenciesMeta` is carried through with the peers it describes. Without it an
+ * *optional* peer — a package like `elysia`, needed only by whoever imports that one subpath —
+ * publishes as a required one, and every consumer gets an unmet-peer warning or an install of
+ * a framework they never asked for.
+ */
 const dependencies = async () => {
   const deps = dependBuilder()
   const peers = dependBuilder()
+  const meta: Record<string, unknown> = {}
 
   for (const p of await packages()) {
     const content = await json(root(p.path, 'package.json'))
     deps.extend(content.dependencies)
     peers.extend(content.peerDependencies)
+    Object.assign(meta, content.peerDependenciesMeta ?? {})
   }
 
-  return { dependencies: deps.out(), peerDependencies: some(peers.out()) }
+  return {
+    dependencies: deps.out(),
+    peerDependencies: some(peers.out()),
+    peerDependenciesMeta: some(meta),
+  }
 }
 
 /** `undefined` for an empty record, which `JSON.stringify` then drops from the manifest. */

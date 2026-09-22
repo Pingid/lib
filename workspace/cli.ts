@@ -1,24 +1,24 @@
 import path from 'node:path'
 
-import { op, ns, optional, string } from '@pingid/lib-api'
 import { git, Shell } from '@pingid/lib-workspace'
-import { run } from '@pingid/lib-api/cli'
+import { c, Cli, Completion } from '@pingid/lib-api/cli'
 
 const root = (...parts: string[]) => path.join(import.meta.dirname, '../', ...parts)
 
-const build = op({
+const build = c.cmd({
   name: 'build',
   description: 'Build the source',
+  options: {},
   handle: async () => {
     await Bun.$`vite build --config ${root('workspace/package/vite.config.ts')}`
   },
 })
 
-const publish = op({
+const publish = c.cmd({
   name: 'publish',
   description: 'Build source and publish to dev release branch',
-  in: {
-    branch: optional(string()).describe('The branch to push the build to'),
+  options: {
+    branch: c.str({ description: 'The branch to push the build to' }),
   },
   handle: async ({ branch = 'pkg' }) => {
     const repo = await git.Repo.discover()
@@ -47,10 +47,14 @@ const publish = op({
   },
 })
 
-const api = ns({
+const api = c.cmd({
   name: 'workspace',
   description: 'Workspace CLI',
-  operations: [build, publish],
+  commands: {
+    build,
+    publish,
+  },
 })
 
-run(api, process.argv.slice(2))
+// Installed as `ws`, so the script is generated with `ws completion zsh --name ws`.
+Cli.for(api).with(Completion.command()).run(process.argv.slice(2))

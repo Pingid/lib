@@ -7,9 +7,11 @@
     { "path": "./workspace/tsconfig/tsconfig.vite.json" },
 
     // packages
+    { "path": "./lib/api" },
     { "path": "./lib/proxy" },
     { "path": "./lib/ship" },
     { "path": "./lib/vite" },
+    { "path": "./lib/wire" },
     { "path": "./lib/workspace" }
   ]
 }

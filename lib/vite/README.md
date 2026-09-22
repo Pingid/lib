@@ -1,14 +1,14 @@
 # @pingid/lib/vite
 
-Three Vite plugins, each one thing: mount a backend in the dev server, bundle a script that can't be
-an ES module, and bind a key to a file.
+Four Vite plugins, each one thing: mount a backend in the dev server, bundle a script that can't be
+an ES module, bind a key to a file, and run a side effect alongside vite.
 
 ```bash
 npm install github:Pingid/vite#pkg
 ```
 
 Vite 3–9, ESM only. Every plugin is also its own entry point — `@pingid/lib/vite/plugin/server`,
-`/plugin/iife`, `/plugin/virtual` — if you'd rather not pull in the barrel.
+`/plugin/iife`, `/plugin/virtual`, `/plugin/lifecycle` — if you'd rather not pull in the barrel.
 
 ## `serve` — a backend inside the dev server
 
@@ -100,6 +100,29 @@ const routes = run('routes', (mod) => {
 
 Keys and module shapes are typed from a generated `src/virtual.d.ts`, so an unknown key is a compile
 error. Each key becomes its own lazy chunk in a build. → [docs](src/virtual/README.md)
+
+## `lifecycle` — a side effect alongside vite
+
+```ts
+import { defineConfig } from 'vite'
+import { lifecycle } from '@pingid/lib/vite'
+
+export default defineConfig({
+  plugins: [
+    lifecycle({
+      name: 'openapi',
+      build: () => generate(),
+      start: async ({ watch }) => {
+        await generate()
+        watch('./schema.json', () => generate())
+      },
+    }),
+  ],
+})
+```
+
+`start` runs once per dev server and whatever it returns is called on close; `build` runs once per
+`vite build`, deduped across per-environment builds. → [docs](src/lifecycle/README.md)
 
 ## Examples
 

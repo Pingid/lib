@@ -12,14 +12,31 @@
   "exports": {
     ".": "./src/core/index.ts",
     "./cli": "./src/cli/index.ts",
-    "./meta": "./src/core/meta.ts"
+    "./http": "./src/http/index.ts",
+    "./http/elysia": "./src/http/elysia.ts",
+    "./http/hono": "./src/http/hono.ts"
   },
   "dependencies": {
+    "@sinclair/typebox": "^0.34.52",
     "@standard-schema/spec": "^1.1.0"
   },
+  "peerDependencies": {
+    "elysia": ">=1.4.0",
+    "hono": ">=4.6.0"
+  },
+  "peerDependenciesMeta": {
+    "elysia": {
+      "optional": true
+    },
+    "hono": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@elysiajs/eden": "^1.4.9",
     "@types/node": "^22.20.3",
-    "vitest": "^4.1.11",
-    "zod": "^4.6.4"
+    "elysia": "^1.4.30",
+    "hono": "^4.13.8",
+    "vitest": "^4.1.11"
   }
 }
