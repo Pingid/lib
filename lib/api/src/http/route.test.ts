@@ -2,7 +2,7 @@ import { Type } from '@sinclair/typebox'
 import { expect, expectTypeOf, test } from 'vitest'
 
 import { Api } from '../core/index.ts'
-import { Route, route } from './route.ts'
+import * as Route from './route.ts'
 
 const getRepo = Api.method({
   name: 'get',
@@ -19,7 +19,7 @@ const getRepo = Api.method({
 // ---------------- the spec is checked against the input --------------------------
 
 test('a complete spec compiles and resolves every key to a source', () => {
-  const r = route(getRepo, {
+  const r = Route.of(getRepo, {
     method: 'GET',
     path: '/orgs/:org/repos/:repo',
     query: ['include'],
@@ -36,12 +36,12 @@ test('a complete spec compiles and resolves every key to a source', () => {
 
 test('an unbound key is a compile error naming the key', () => {
   // @ts-expect-error `requestId` is bound to no source, and no `rest` is set
-  route(getRepo, { method: 'GET', path: '/orgs/:org/repos/:repo', query: ['include'] })
+  Route.of(getRepo, { method: 'GET', path: '/orgs/:org/repos/:repo', query: ['include'] })
 })
 
 test('a key already claimed by an earlier source cannot be claimed again', () => {
   // @ts-expect-error `include` is claimed by both `query` and `header`
-  route(getRepo, {
+  Route.of(getRepo, {
     method: 'GET',
     path: '/orgs/:org/repos/:repo',
     query: ['include'],
@@ -51,46 +51,46 @@ test('a key already claimed by an earlier source cannot be claimed again', () =>
 
 test('a path parameter the input does not declare is a compile error', () => {
   // @ts-expect-error the input has no `slug`
-  route(getRepo, { method: 'GET', path: '/orgs/:org/repos/:repo/:slug', query: ['include'], header: ['requestId'] })
+  Route.of(getRepo, { method: 'GET', path: '/orgs/:org/repos/:repo/:slug', query: ['include'], header: ['requestId'] })
 })
 
 test('rest silences the unbound check and sweeps what is left', () => {
-  const r = route(getRepo, { method: 'POST', path: '/orgs/:org/repos/:repo', rest: 'body' })
+  const r = Route.of(getRepo, { method: 'POST', path: '/orgs/:org/repos/:repo', rest: 'body' })
 
   expect(r.bindings['include']).toEqual({ source: 'body', name: 'include', array: true })
   expect(r.bindings['requestId']).toEqual({ source: 'body', name: 'requestId', array: false })
 })
 
 test('body true is sugar for rest body', () => {
-  const r = route(getRepo, { method: 'POST', path: '/orgs/:org/repos/:repo', body: true })
+  const r = Route.of(getRepo, { method: 'POST', path: '/orgs/:org/repos/:repo', body: true })
   expect(r.bindings['include']?.source).toBe('body')
 })
 
 test('a non-literal path degrades to no check rather than flagging every key', () => {
   const path: string = '/orgs/:org/repos/:repo'
-  route(getRepo, { method: 'GET', path })
+  Route.of(getRepo, { method: 'GET', path })
 })
 
 // ---------------- what the route carries --------------------------
 
 test('the path literal survives into the route type', () => {
-  const r = route(getRepo, { method: 'GET', path: '/orgs/:org/repos/:repo', query: ['include'], header: ['requestId'] })
-  expectTypeOf(r).toExtend<Route<any, any, any, '/orgs/:org/repos/:repo'>>()
+  const r = Route.of(getRepo, { method: 'GET', path: '/orgs/:org/repos/:repo', query: ['include'], header: ['requestId'] })
+  expectTypeOf(r).toExtend<Route.Type<any, any, any, '/orgs/:org/repos/:repo'>>()
 })
 
 test('an array-typed field is marked so repeated values collect', () => {
-  const r = route(getRepo, { method: 'GET', path: '/orgs/:org/repos/:repo', query: ['include'], header: ['requestId'] })
+  const r = Route.of(getRepo, { method: 'GET', path: '/orgs/:org/repos/:repo', query: ['include'], header: ['requestId'] })
   expect(r.bindings['include']?.array).toBe(true)
   expect(r.bindings['org']?.array).toBe(false)
 })
 
 test('a header wire name defaults to the kebab-cased key', () => {
-  const r = route(getRepo, { method: 'GET', path: '/orgs/:org/repos/:repo', query: ['include'], header: ['requestId'] })
+  const r = Route.of(getRepo, { method: 'GET', path: '/orgs/:org/repos/:repo', query: ['include'], header: ['requestId'] })
   expect(r.bindings['requestId']?.name).toBe('request-id')
 })
 
 test('the route matches its own path', () => {
-  const r = route(getRepo, { method: 'GET', path: '/orgs/:org/repos/:repo', query: ['include'], header: ['requestId'] })
+  const r = Route.of(getRepo, { method: 'GET', path: '/orgs/:org/repos/:repo', query: ['include'], header: ['requestId'] })
   expect(r.match('/orgs/acme/repos/lib')).toEqual({ org: 'acme', repo: 'lib' })
   expect(r.match('/orgs/acme')).toBeUndefined()
 })

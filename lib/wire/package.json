@@ -20,13 +20,14 @@
   "exports": {
     ".": "./src/index.ts",
     "./adapters": "./src/adapters/index.ts",
-    "./records": "./src/protocols/records.ts",
-    "./topics": "./src/protocols/topics.ts"
+    "./protocols": "./src/protocols/index.ts",
+    "./records": "./src/protocols/records/index.ts",
+    "./topics": "./src/protocols/topics/index.ts"
   },
   "files": [
     "dist",
-    "README.md",
-    "LICENSE"
+    "readme.md",
+    "license"
   ],
   "keywords": [
     "wire",
@@ -70,7 +71,7 @@
   "prettier": {
     "semi": false,
     "singleQuote": true,
-    "printWidth": 120,
+    "printWidth": 240,
     "trailingComma": "all"
   }
 }

@@ -1,15 +1,42 @@
+/*--------------------------------------------------------------------------
+
+@pingid/lib-wire
+
+The MIT License (MIT)
+
+Copyright (c) 2026 Dan Beaven <dm.beaven@gmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+---------------------------------------------------------------------------*/
+
 import { describe, expect, it } from 'vitest'
 
-import { hub, type Node } from '../core.ts'
-import { pair } from '../node.ts'
-import { topics } from '../protocols/topics.ts'
-import { defineNode, type Host } from './define.ts'
-import { fakeClock } from './clock.ts'
-import { fromPostMessage, type PostTarget } from './post-message.ts'
-import { keepalive } from './keepalive.ts'
-import { reconnect } from './reconnect.ts'
-import { sockets, type Socket } from './sockets.ts'
-import { source } from './source.ts'
+import { FakeClock } from '../src/adapters/clock.ts'
+import { keepalive } from '../src/adapters/keepalive.ts'
+import { fromPostMessage, type PostTarget } from '../src/adapters/post-message.ts'
+import { ReconnectNode } from '../src/adapters/reconnect.ts'
+import { Sockets, type Socket } from '../src/adapters/sockets.ts'
+import { source } from '../src/adapters/source.ts'
+import { Hub, plugin } from '../src/hub/index.ts'
+import { pair, TransportNode, type Node, type TransportHost } from '../src/node/index.ts'
+import { Wire } from '../src/protocols/topics/index.ts'
 
 const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
 
@@ -19,10 +46,10 @@ const beat = {
   read: (msg: Beat) => (msg.t === 'ping' || msg.t === 'pong' ? msg.t : null),
 }
 
-describe('defineNode', () => {
+describe('TransportNode', () => {
   it('holds inbound until someone listens', () => {
-    let host!: Host<string>
-    const node = defineNode<string>((h) => ((host = h), { send: () => true }))
+    let host!: TransportHost<string>
+    const node = new TransportNode<string>((h) => ((host = h), { send: () => true }))
     host.deliver('early')
 
     const seen: string[] = []
@@ -32,8 +59,8 @@ describe('defineNode', () => {
 
   it('drops the oldest past the bound, and reports it', () => {
     const dropped: string[] = []
-    let host!: Host<string>
-    const node = defineNode<string>((h) => ((host = h), { send: () => true }), {
+    let host!: TransportHost<string>
+    const node = new TransportNode<string>((h) => ((host = h), { send: () => true }), {
       pending: 2,
       onDrop: (msg) => dropped.push(msg),
     })
@@ -49,8 +76,8 @@ describe('defineNode', () => {
 
   it('releases once and goes inert, whoever closed it', () => {
     let released = 0
-    let host!: Host<string>
-    const node = defineNode<string>((h) => ((host = h), { send: () => true, release: () => released++ }))
+    let host!: TransportHost<string>
+    const node = new TransportNode<string>((h) => ((host = h), { send: () => true, release: () => released++ }))
 
     let gone = 0
     node.closed(() => gone++)
@@ -64,7 +91,7 @@ describe('defineNode', () => {
   })
 
   it('survives a transport that is dead before it hands anything back', () => {
-    const node = defineNode<string>((host) => (host.shut(), { send: () => true }))
+    const node = new TransportNode<string>((host) => (host.shut(), { send: () => true }))
     let gone = false
     node.closed(() => (gone = true))
     expect(gone).toBe(true)
@@ -73,28 +100,28 @@ describe('defineNode', () => {
 
 describe('source', () => {
   it('owns what it produced', async () => {
-    const h = hub<string>([])
+    const hub = new Hub<string>([])
     let offer!: (node: Node<string>) => void
     const feed = source<string>((host) => void (offer = host.offer))
 
-    const stop = feed(h)
+    const stop = feed(hub)
     const [x, y] = pair<string>()
     offer(x)
-    expect(h.peers.length).toBe(1)
+    expect(hub.peers.length).toBe(1)
 
     let closed = false
     y.closed(() => (closed = true))
     stop()
     await settle()
 
-    expect(h.peers.length).toBe(0)
+    expect(hub.peers.length).toBe(0)
     expect(closed).toBe(true)
   })
 
   it('closes a node offered after it stopped', () => {
-    const h = hub<string>([])
+    const hub = new Hub<string>([])
     let offer!: (node: Node<string>) => void
-    const stop = source<string>((host) => void (offer = host.offer))(h)
+    const stop = source<string>((host) => void (offer = host.offer))(hub)
     stop()
 
     const [x, y] = pair<string>()
@@ -103,19 +130,19 @@ describe('source', () => {
     offer(x)
 
     expect(closed).toBe(true)
-    expect(h.peers.length).toBe(0)
+    expect(hub.peers.length).toBe(0)
   })
 })
 
-describe('reconnect', () => {
+describe('ReconnectNode', () => {
   it('retries with backoff and flushes what was held', async () => {
-    const clock = fakeClock()
+    const clock = new FakeClock()
     const states: string[] = []
     const seen: string[] = []
     let attempts = 0
     let far: Node<string> | null = null
 
-    const node = reconnect<string>(
+    const node = new ReconnectNode<string>(
       () => {
         attempts += 1
         const [mine, theirs] = pair<string>()
@@ -144,11 +171,11 @@ describe('reconnect', () => {
   })
 
   it('abandons an attempt that says nothing', async () => {
-    const clock = fakeClock()
+    const clock = new FakeClock()
     const errors: unknown[] = []
     let attempts = 0
 
-    reconnect<string>(
+    new ReconnectNode<string>(
       () => {
         attempts += 1
         return pair<string>()[0]
@@ -165,11 +192,9 @@ describe('reconnect', () => {
   })
 
   it('re-announces subscriptions across a reconnect, with no liveness concept anywhere', async () => {
-    const clock = fakeClock()
-    const app = topics<{ tick: number }>({ name: 'app' })
-
-    const server = app.node()
-    const client = app.node()
+    const clock = new FakeClock()
+    const server = new Wire<{ tick: number }>({ name: 'app' })
+    const client = new Wire<{ tick: number }>({ name: 'app' })
 
     // A fresh transport into the same server on every attempt.
     const connect = () => {
@@ -178,7 +203,7 @@ describe('reconnect', () => {
       return mine
     }
 
-    const wire = reconnect<unknown>(connect, { clock, backoff: { base: 100 }, timeout: 0 })
+    const wire = new ReconnectNode<unknown>(connect, { clock, backoff: { base: 100 }, timeout: 0 })
     client.add(wire)
     await settle()
 
@@ -205,7 +230,7 @@ describe('reconnect', () => {
 describe('keepalive', () => {
   it('answers a ping without the protocol seeing it', async () => {
     const [x, y] = pair<Beat>()
-    const clock = fakeClock()
+    const clock = new FakeClock()
     const node = keepalive(x, { ...beat, clock, interval: 1_000, timeout: 500 })
 
     const seen: Beat[] = []
@@ -223,7 +248,7 @@ describe('keepalive', () => {
 
   it('closes when nothing comes back', async () => {
     const [x] = pair<Beat>()
-    const clock = fakeClock()
+    const clock = new FakeClock()
     const node = keepalive(x, { ...beat, clock, interval: 1_000, timeout: 500 })
 
     let gone = false
@@ -239,7 +264,7 @@ describe('keepalive', () => {
 
   it('counts any inbound message as a sign of life', async () => {
     const [x, y] = pair<Beat>()
-    const clock = fakeClock()
+    const clock = new FakeClock()
     const node = keepalive(x, { ...beat, clock, interval: 1_000, timeout: 500 })
 
     let gone = false
@@ -302,7 +327,7 @@ describe('fromPostMessage', () => {
   })
 })
 
-describe('sockets', () => {
+describe('Sockets', () => {
   it('turns socket callbacks into peers', async () => {
     type Fake = Socket & { out: string[] }
     const make = (): Fake => {
@@ -310,23 +335,23 @@ describe('sockets', () => {
       return { out, send: ((data: string) => out.push(data)) as Socket['send'], close: () => {} }
     }
 
-    const wire = sockets<Fake, { body: string }>({ meta: () => ({ name: 'socket' }) })
+    const wire = new Sockets<Fake, { body: string }>({ meta: () => ({ name: 'socket' }) })
     const seen: string[] = []
-    const h = hub<{ body: string }>([() => ({ data: (_peer, msg) => void seen.push(msg.body) })])
-    wire.source(h)
+    const hub = new Hub<{ body: string }>([plugin(() => ({ data: (_peer, msg) => void seen.push(msg.body) }))])
+    wire.source(hub)
 
     const socket = make()
     wire.open(socket)
-    expect(h.peers.length).toBe(1)
-    expect(h.peers[0]!.meta['name']).toBe('socket')
+    expect(hub.peers.length).toBe(1)
+    expect(hub.peers[0]!.meta['name']).toBe('socket')
 
     wire.message(socket, JSON.stringify({ body: 'hi' }))
     expect(seen).toEqual(['hi'])
 
-    h.peers[0]!.send({ body: 'back' })
+    hub.peers[0]!.send({ body: 'back' })
     expect(socket.out).toEqual([JSON.stringify({ body: 'back' })])
 
     wire.close(socket)
-    expect(h.peers.length).toBe(0)
+    expect(hub.peers.length).toBe(0)
   })
 })

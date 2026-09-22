@@ -2,8 +2,8 @@ import { Type } from '@sinclair/typebox'
 import { expect, test } from 'vitest'
 
 import { Api } from '../core/index.ts'
-import { router, toFetch } from './fetch.ts'
-import { route } from './route.ts'
+import * as Fetch from './fetch.ts'
+import * as Route from './route.ts'
 
 interface Db {
   tag: string
@@ -27,16 +27,16 @@ const createRepo = Api.method({
   handle: async (input) => ({ created: input.name, org: input.org, private: input.private }),
 })
 
-const get = route(getRepo, {
+const get = Route.of(getRepo, {
   method: 'GET',
   path: '/orgs/:org/repos/:repo',
   query: ['page', 'tags'],
   header: { requestId: 'x-request-id' },
 }).with({ db: { tag: 'live' } })
 
-const create = route(createRepo, { method: 'POST', path: '/orgs/:org/repos', body: true })
+const create = Route.of(createRepo, { method: 'POST', path: '/orgs/:org/repos', body: true })
 
-const handler = router(get, create)
+const handler = Fetch.router(get, create)
 const json = async (response: Response) => [response.status, await response.json()] as const
 
 test('path parameters and query reach the handler as one flat object', async () => {
@@ -102,15 +102,15 @@ test('an unmatched path and a mismatched method are both 404', async () => {
 })
 
 test('a standalone route handler takes its context as a second argument', async () => {
-  const bare = toFetch(route(getRepo, { method: 'GET', path: '/r/:org/:repo', rest: 'query' }))
+  const bare = Fetch.handler(Route.of(getRepo, { method: 'GET', path: '/r/:org/:repo', rest: 'query' }))
   const [, body] = await json(await bare(new Request('http://x/r/a/b'), { db: { tag: 'passed-in' } }))
 
   expect(body).toMatchObject({ tag: 'passed-in' })
 })
 
 test('from derives the method context out of the framework context', async () => {
-  const derived = toFetch(
-    route(getRepo, { method: 'GET', path: '/d/:org/:repo', rest: 'query' }).from((c: { tag: string }) => ({
+  const derived = Fetch.handler(
+    Route.of(getRepo, { method: 'GET', path: '/d/:org/:repo', rest: 'query' }).from((c: { tag: string }) => ({
       db: { tag: c.tag },
     })),
   )

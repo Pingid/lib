@@ -1,4 +1,5 @@
 {
   "extends": "../../workspace/tsconfig/tsconfig.base.json",
-  "include": ["src"]
+  "include": ["src", "test", "example"],
+  "exclude": []
 }

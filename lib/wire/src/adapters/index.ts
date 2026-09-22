@@ -1,37 +1,34 @@
-/**
- * Putting a hub on a real transport.
- *
- * Two kinds of thing: combinators that turn a transport into a better one
- * (`defineNode`, `reconnect`, `keepalive`), and sources that feed a hub peers
- * over time (`source`, `sockets`).
- *
- * @example
- * ```ts
- * const node = keepalive(
- *   reconnect<Frame>(() => fromPostMessage(new Worker(url)), { buffer: 32 }),
- *   { beat: (kind) => ({ t: kind }), read: (msg) => (msg.t === 'ping' || msg.t === 'pong' ? msg.t : null) },
- * )
- * hub.add(node, { name: 'worker' })
- * ```
- */
+/*--------------------------------------------------------------------------
 
-export { fakeClock, systemClock } from './clock.ts'
-export type { Clock, FakeClock } from './clock.ts'
+@pingid/lib-wire/adapters
 
-export { defineNode } from './define.ts'
-export type { DefineOptions, Host, Transport } from './define.ts'
+The MIT License (MIT)
 
-export { source, adders } from './source.ts'
-export type { Adder, Source, SourceHost, SourceOptions } from './source.ts'
+Copyright (c) 2026 Dan Beaven <dm.beaven@gmail.com>
 
-export { reconnect } from './reconnect.ts'
-export type { Connector, Reconnect, ReconnectOptions, State } from './reconnect.ts'
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-export { keepalive } from './keepalive.ts'
-export type { KeepaliveOptions } from './keepalive.ts'
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
 
-export { fromPostMessage } from './post-message.ts'
-export type { PostMessageOptions, PostTarget } from './post-message.ts'
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
 
-export { sockets } from './sockets.ts'
-export type { Socket, Sockets, SocketsOptions } from './sockets.ts'
+---------------------------------------------------------------------------*/
+
+export * from './clock.ts'
+export * from './keepalive.ts'
+export * from './post-message.ts'
+export * from './reconnect.ts'
+export * from './sockets.ts'
+export * from './source.ts'

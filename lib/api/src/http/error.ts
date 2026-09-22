@@ -8,11 +8,15 @@ export declare namespace HttpError {
 }
 
 /**
- * A failure the request caused, rather than the handler.
+ * A failure the request caused, rather than the handler. Parallel to `CliError`: enough for an
+ * adapter to render a response and nothing about how. Anything else is a bug and propagates
+ * untouched, which leaves each framework's own error handling in charge.
  *
- * Deliberately parallel to `CliError`: carries enough for the adapter to render a response and
- * nothing about how. Anything that is not one of these is a bug and propagates untouched, which
- * is what lets each framework's own error handling stay in charge.
+ * @example
+ * ```ts
+ * throw HttpError.notFound({ id })
+ * throw new HttpError('too large', { status: 413 })
+ * ```
  */
 export class HttpError extends Error {
   readonly status: number
@@ -26,11 +30,14 @@ export class HttpError extends Error {
   }
 
   /**
-   * Validation failure, as 422.
+   * Validation failure, as 422 — what Elysia's own validation returns, so one status covers all
+   * three adapters. Issues pass through unreshaped: the same `Schema.Issue[]` the CLI renders.
    *
-   * 422 because that is what Elysia's own validation returns, and one status across the three
-   * adapters keeps a framework detail out of the client's error handling. The issues are passed
-   * through unreshaped — the same `Schema.Issue[]` the CLI renders as text.
+   * @example
+   * ```ts
+   * HttpError.fromIssues(result.error).body
+   * // { error: 'validation', issues: [{ path: 'page', message: 'Expected integer' }] }
+   * ```
    */
   static fromIssues(issues: Schema.Issue[]): HttpError {
     return new HttpError('validation', { status: 422, body: { error: 'validation', issues } })

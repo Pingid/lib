@@ -6,4 +6,6 @@ allowBuilds:
 
 overrides:
   '@pingid/lib-api': link:lib/api
+  '@pingid/lib-compose': link:lib/ship
   '@pingid/lib-workspace': link:lib/workspace
+  '@sinclair/typebox': 0.33.24

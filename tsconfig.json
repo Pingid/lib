@@ -2,12 +2,13 @@
   "files": [],
   "references": [
     // mono
-    { "path": "./workspace/tsconfig/tsconfig.mono.json" },
+    // { "path": "./workspace/tsconfig/tsconfig.mono.json" },
     // workspace
     { "path": "./workspace/tsconfig/tsconfig.vite.json" },
 
     // packages
     { "path": "./lib/api" },
+    { "path": "./lib/openapi" },
     { "path": "./lib/proxy" },
     { "path": "./lib/ship" },
     { "path": "./lib/vite" },

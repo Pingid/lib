@@ -1,6 +1,6 @@
 import { expect, expectTypeOf, test } from 'vitest'
 
-import { Path } from './path.ts'
+import * as Path from './path.ts'
 
 const match = (pattern: string, pathname: string) => Path.match(Path.compile(pattern), pathname)
 

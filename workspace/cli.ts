@@ -1,6 +1,6 @@
 import path from 'node:path'
 
-import { git, Shell } from '@pingid/lib-workspace'
+import { Repo, Shell } from '@pingid/lib-workspace'
 import { c, Cli, Completion } from '@pingid/lib-api/cli'
 
 const root = (...parts: string[]) => path.join(import.meta.dirname, '../', ...parts)
@@ -21,7 +21,7 @@ const publish = c.cmd({
     branch: c.str({ description: 'The branch to push the build to' }),
   },
   handle: async ({ branch = 'pkg' }) => {
-    const repo = await git.Repo.discover()
+    const repo = await Repo.discover()
 
     await using tree = await repo.worktree(branch, { path: root('.cache/.worktrees', branch) })
 

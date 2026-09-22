@@ -4,8 +4,8 @@ import { hc } from 'hono/client'
 import { expect, expectTypeOf, test } from 'vitest'
 
 import { Api } from '../core/index.ts'
-import { hono } from './hono.ts'
-import { route } from './route.ts'
+import * as Hono from './hono.ts'
+import * as Route from './route.ts'
 
 const getRepo = Api.method({
   name: 'get',
@@ -18,11 +18,11 @@ const getRepo = Api.method({
   }),
 })
 
-const get = route(getRepo, { method: 'GET', path: '/orgs/:org/repos/:repo', query: ['page'] }).with({
+const get = Route.of(getRepo, { method: 'GET', path: '/orgs/:org/repos/:repo', query: ['page'] }).with({
   db: { stars: 10 },
 })
 
-const app = new HonoApp().get('/orgs/:org/repos/:repo', hono(get))
+const app = new HonoApp().get('/orgs/:org/repos/:repo', Hono.route(get))
 
 test('the route serves through hono with params and query decoded', async () => {
   const response = await app.request('http://localhost/orgs/acme/repos/lib?page=5')
@@ -49,7 +49,7 @@ test('hc infers the request and response types through the adapter', () => {
 })
 
 test('from reads the method context off the hono context', async () => {
-  const derived = route(getRepo, { method: 'GET', path: '/d/:org/:repo', rest: 'query' }).from(
+  const derived = Route.of(getRepo, { method: 'GET', path: '/d/:org/:repo', rest: 'query' }).from(
     (c: { var: { stars: number } }) => ({ db: { stars: c.var.stars } }),
   )
 
@@ -58,7 +58,7 @@ test('from reads the method context off the hono context', async () => {
       c.set('stars' as never, 99 as never)
       await next()
     })
-    .get('/d/:org/:repo', hono(derived))
+    .get('/d/:org/:repo', Hono.route(derived))
 
   const response = await app2.request('http://localhost/d/a/b')
   expect(await response.json()).toMatchObject({ stars: 99 })

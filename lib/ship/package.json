@@ -9,10 +9,11 @@
     "generate": "tsx script/types.ts"
   },
   "bin": {
-    "ship": "./cli/cli.ts"
+    "ship": "./cli/v2.ts"
   },
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./config": "./src/config.ts"
   },
   "keywords": [],
   "author": "",
@@ -23,6 +24,7 @@
   },
   "devDependencies": {
     "json-schema-to-typescript": "^16.0.0",
+    "@pingid/lib-workspace": "workspace:*",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11"
   }

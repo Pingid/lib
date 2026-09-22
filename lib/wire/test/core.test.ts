@@ -1,11 +1,39 @@
+/*--------------------------------------------------------------------------
+
+@pingid/lib-wire
+
+The MIT License (MIT)
+
+Copyright (c) 2026 Dan Beaven <dm.beaven@gmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+---------------------------------------------------------------------------*/
+
 import { describe, expect, it } from 'vitest'
 
-import { hub, type Peer, type Plugin } from './core.ts'
-import { directory } from './directory.ts'
-import { interest } from './interest.ts'
-import { pair, participant, tagged } from './node.ts'
-import { records } from './protocols/records.ts'
-import { topics, type Frame } from './protocols/topics.ts'
+import { Directory } from '../src/directory/index.ts'
+import { Hub, plugin, type Peer } from '../src/hub/index.ts'
+import { Interest } from '../src/interest/index.ts'
+import { pair, participant, tagged } from '../src/node/index.ts'
+import { Store } from '../src/protocols/records/index.ts'
+import { Wire, type Frame } from '../src/protocols/topics/index.ts'
 
 const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
 
@@ -15,34 +43,33 @@ const link = (a: { add: (n: never, m?: never) => unknown }, b: { add: (n: never,
   b.add(y as never)
 }
 
-/* -------------------------------------------------------------------------- */
-/* interest — the abstraction, with no protocol in sight                      */
-/* -------------------------------------------------------------------------- */
-
+// ------------------------------------------------------------------
+// Interest — the abstraction, with no protocol in sight
+// ------------------------------------------------------------------
 type Want = { want: string; on: boolean } | { say: string }
 
 const wanting = () =>
-  interest<Want, string>({
+  new Interest<Want, string>({
     read: (msg) => ('want' in msg ? { key: msg.want, on: msg.on } : null),
     write: ({ key, on }) => ({ want: key, on }),
   })
 
-describe('interest', () => {
+describe('Interest', () => {
   it('indexes who wants what without knowing what a message is', async () => {
     const wants = wanting()
     const delivered: string[] = []
-    const routes: Plugin<Want> = () => ({
+    const routes = plugin<Want>(() => ({
       data: (peer, msg, next) => {
         if (!('say' in msg)) return next(msg)
         for (const to of wants.match(msg.say, peer)) to.send(msg)
       },
-    })
+    }))
 
-    const h = hub<Want>([wants, routes])
+    const hub = new Hub<Want>([wants, routes])
     const [x, y] = pair<Want>()
     const [p, q] = pair<Want>()
-    h.add(x)
-    h.add(p)
+    hub.add(x)
+    hub.add(p)
     q.listen((msg) => void ('say' in msg && delivered.push(msg.say)))
 
     q.send({ want: 'weather', on: true })
@@ -56,11 +83,11 @@ describe('interest', () => {
 
   it('tells each peer what the others want, and takes it back', async () => {
     const wants = wanting()
-    const h = hub<Want>([wants])
+    const hub = new Hub<Want>([wants])
     const [x, y] = pair<Want>()
     const [p, q] = pair<Want>()
-    h.add(x)
-    h.add(p)
+    hub.add(x)
+    hub.add(p)
 
     const told: Want[] = []
     y.listen((msg) => told.push(msg))
@@ -77,15 +104,15 @@ describe('interest', () => {
   })
 
   it('expands a published key, which is all a wildcard is', () => {
-    const wants = interest<Want, string>({
+    const wants = new Interest<Want, string>({
       read: (msg) => ('want' in msg ? { key: msg.want, on: msg.on } : null),
       write: ({ key, on }) => ({ want: key, on }),
       expand: (key) => [key, `${key.split('/')[0]}/*`],
     })
-    const h = hub<Want>([wants])
+    const hub = new Hub<Want>([wants])
     const [x] = pair<Want>()
-    h.add(x)
-    const peer = h.peers[0] as Peer<Want>
+    hub.add(x)
+    const peer = hub.peers[0] as Peer<Want>
 
     wants.set(peer, 'users/*', true)
     expect(wants.match('users/42')).toEqual([peer])
@@ -94,9 +121,9 @@ describe('interest', () => {
 
   it('forgets a peer that leaves', async () => {
     const wants = wanting()
-    const h = hub<Want>([wants])
+    const hub = new Hub<Want>([wants])
     const [x, y] = pair<Want>()
-    h.add(x)
+    hub.add(x)
     y.send({ want: 'weather', on: true })
     await settle()
     expect(wants.wanted()).toEqual(['weather'])
@@ -107,27 +134,26 @@ describe('interest', () => {
   })
 })
 
-/* -------------------------------------------------------------------------- */
-/* directory                                                                  */
-/* -------------------------------------------------------------------------- */
-
-describe('directory', () => {
+// ------------------------------------------------------------------
+// Directory
+// ------------------------------------------------------------------
+describe('Directory', () => {
   it('learns the way back to a sender it only overheard', async () => {
     type Msg = { from?: string; to?: string; body: string }
 
-    const who = directory<Msg>({ from: (msg) => msg.from ?? null, stamp: (msg, id) => ({ ...msg, from: id }) })
-    const routes: Plugin<Msg> = (h) => ({
+    const who = new Directory<Msg>({ from: (msg) => msg.from ?? null, stamp: (msg, id) => ({ ...msg, from: id }) })
+    const routes = plugin<Msg>((hub) => ({
       data: (peer, msg) => {
         if (msg.to !== undefined) return void who.peer(msg.to)?.send(msg)
-        for (const to of h.peers) if (to !== peer) to.send(msg)
+        for (const to of hub.peers) if (to !== peer) to.send(msg)
       },
-    })
+    }))
 
-    const h = hub<Msg>([who, routes])
+    const hub = new Hub<Msg>([who, routes])
     const [x, y] = pair<Msg>()
     const [p, q] = pair<Msg>()
-    h.add(x)
-    h.add(p)
+    hub.add(x)
+    hub.add(p)
 
     const asked: Msg[] = []
     const replies: Msg[] = []
@@ -139,7 +165,7 @@ describe('directory', () => {
     expect(asked[0]?.body).toBe('ping')
     expect(typeof asked[0]?.from).toBe('string')
 
-    // `q` has never been told who that is, only where the reply should go.
+    // q has never been told who that is, only where the reply should go.
     q.send({ to: asked[0]!.from!, body: 'pong' })
     await settle()
 
@@ -147,17 +173,17 @@ describe('directory', () => {
   })
 })
 
-/* -------------------------------------------------------------------------- */
-/* two protocols, one machine                                                 */
-/* -------------------------------------------------------------------------- */
+// ------------------------------------------------------------------
+// Topics — two protocols, one machine
+// ------------------------------------------------------------------
+type Chat = { tick: number; chat: string }
+const chat = () => new Wire<Chat>({ name: 'chat', retain: ['tick'] })
 
-const chat = topics<{ tick: number; chat: string }>({ name: 'chat', retain: ['tick'] })
-
-describe('topics, built on the blocks', () => {
+describe('Topics, built on the blocks', () => {
   it('fans out, retains and replies', async () => {
-    const host = chat.node()
-    const a = chat.node()
-    const b = chat.node()
+    const host = chat()
+    const a = chat()
+    const b = chat()
     link(host, a)
     link(host, b)
     await settle()
@@ -178,7 +204,7 @@ describe('topics, built on the blocks', () => {
 
     a.topic('tick').send(7)
     await settle()
-    const late = chat.node()
+    const late = chat()
     link(host, late)
     await settle()
     const seen: Array<[number, boolean]> = []
@@ -188,9 +214,9 @@ describe('topics, built on the blocks', () => {
   })
 
   it('relays through a hub in the middle that wants nothing', async () => {
-    const left = chat.node()
-    const middle = chat.node()
-    const right = chat.node()
+    const left = chat()
+    const middle = chat()
+    const right = chat()
     link(left, middle)
     link(middle, right)
     await settle()
@@ -205,13 +231,16 @@ describe('topics, built on the blocks', () => {
   })
 })
 
-describe('records, the same machinery under a compound key', () => {
-  const store = records('store')
+// ------------------------------------------------------------------
+// Records — the same machinery under a compound key
+// ------------------------------------------------------------------
+describe('Records, the same machinery under a compound key', () => {
+  const store = () => new Store({ name: 'store' })
 
   it('routes on (collection, id)', async () => {
-    const host = store.node()
-    const a = store.node()
-    const b = store.node()
+    const host = store()
+    const a = store()
+    const b = store()
     link(host, a)
     link(host, b)
     await settle()
@@ -230,9 +259,9 @@ describe('records, the same machinery under a compound key', () => {
   })
 
   it('reaches a collection watcher with a record patch', async () => {
-    const host = store.node()
-    const a = store.node()
-    const b = store.node()
+    const host = store()
+    const a = store()
+    const b = store()
     link(host, a)
     link(host, b)
     await settle()
@@ -250,9 +279,9 @@ describe('records, the same machinery under a compound key', () => {
   })
 
   it('propagates compound interest across a hub in the middle', async () => {
-    const left = store.node()
-    const middle = store.node()
-    const right = store.node()
+    const left = store()
+    const middle = store()
+    const right = store()
     link(left, middle)
     link(middle, right)
     await settle()
@@ -269,21 +298,24 @@ describe('records, the same machinery under a compound key', () => {
   })
 })
 
-describe('core', () => {
-  it('gates admission by closing the peer in `open`', async () => {
-    const gate: Plugin<string> = () => ({ open: (peer) => void (peer.meta['token'] === 'ok' || peer.close()) })
-    const h = hub<string>([gate])
+// ------------------------------------------------------------------
+// Hub
+// ------------------------------------------------------------------
+describe('Hub', () => {
+  it('gates admission by closing the peer in open', async () => {
+    const gate = plugin<string>(() => ({ open: (peer) => void (peer.meta['token'] === 'ok' || peer.close()) }))
+    const hub = new Hub<string>([gate])
     const [x, y] = pair<string>()
     const [p] = pair<string>()
-    h.add(x, { token: 'no' })
-    h.add(p, { token: 'ok' })
+    hub.add(x, { token: 'no' })
+    hub.add(p, { token: 'ok' })
 
     let dead = false
     y.closed(() => (dead = true))
     await settle()
 
     expect(dead).toBe(true)
-    expect(h.peers.length).toBe(1)
+    expect(hub.peers.length).toBe(1)
   })
 
   it('lets two protocols share one transport', async () => {
@@ -305,11 +337,11 @@ describe('core', () => {
   })
 
   it('participation is a peer', async () => {
-    const h = hub<string>([])
-    const here = participant(h, { name: 'me' })
-    expect(h.peers.length).toBe(1)
+    const hub = new Hub<string>([])
+    const here = participant(hub, { name: 'me' })
+    expect(hub.peers.length).toBe(1)
     here.close()
     await settle()
-    expect(h.peers.length).toBe(0)
+    expect(hub.peers.length).toBe(0)
   })
 })

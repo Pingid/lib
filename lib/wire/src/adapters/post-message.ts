@@ -1,28 +1,38 @@
-import type { Node } from '../core.ts'
-import { defineNode, type DefineOptions } from './define.ts'
+/*--------------------------------------------------------------------------
 
-/**
- * Anything with `postMessage` and `message` events: a `Worker`, a `MessagePort`,
- * a `BroadcastChannel`, a worker's own global.
- *
- * @example
- * ```ts
- * hub.add(fromPostMessage<Frame>(new Worker('./worker.js')), { name: 'worker' })
- * ```
- */
+@pingid/lib-wire/adapters
 
-/**
- * Structural, not `lib.dom`: a stub in a test satisfies it too.
- *
- * @example
- * ```ts
- * const fake: PostTarget = {
- *   postMessage: (msg) => sink.push(msg),
- *   addEventListener: (_type, fn) => listeners.add(fn),
- *   removeEventListener: (_type, fn) => listeners.delete(fn),
- * }
- * ```
- */
+The MIT License (MIT)
+
+Copyright (c) 2026 Dan Beaven <dm.beaven@gmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+---------------------------------------------------------------------------*/
+
+import type { Node } from '../node/node.ts'
+import { TransportNode, type TransportOptions } from '../node/transport.ts'
+
+// ------------------------------------------------------------------
+// PostTarget
+// ------------------------------------------------------------------
+/** Structural, not lib.dom: a Worker, a MessagePort, a BroadcastChannel, a worker's own global, a stub in a test. */
 export interface PostTarget {
   postMessage(msg: unknown): void
   addEventListener(type: 'message', fn: (event: { data: unknown }) => void): void
@@ -32,27 +42,23 @@ export interface PostTarget {
   close?(): void
 }
 
-/**
- * @example
- * ```ts
- * fromPostMessage<Frame>(port, { own: false }) // a port someone else hands you
- * ```
- */
-export interface PostMessageOptions<T> extends DefineOptions<T> {
+// ------------------------------------------------------------------
+// PostMessageOptions
+// ------------------------------------------------------------------
+export interface PostMessageOptions<T> extends TransportOptions<T> {
   /**
-   * Terminate or close the target when the node ends. Defaults to true when the
-   * target has `terminate`, since you only hold that handle to one you created.
-   *
-   * @example
-   * ```ts
-   * fromPostMessage<Frame>(self as unknown as PostTarget, { own: false }) // never close yourself
-   * ```
+   * Terminate or close the target when the node ends. Defaults to true when the target
+   * has terminate, since you only hold that handle to one you created.
    */
   own?: boolean | undefined
 }
 
+// ------------------------------------------------------------------
+// FromPostMessage
+// ------------------------------------------------------------------
 /**
- * A failed clone is a bad payload, not a dead port, so it is reported rather than fatal.
+ * Creates a node over anything with postMessage and message events. A failed clone is a
+ * bad payload, not a dead port, so it is reported rather than fatal.
  *
  * @example
  * ```ts
@@ -63,10 +69,10 @@ export interface PostMessageOptions<T> extends DefineOptions<T> {
  * hub.add(fromPostMessage<Frame>(self as unknown as PostTarget))
  * ```
  */
-export const fromPostMessage = <T>(target: PostTarget, opts: PostMessageOptions<T> = {}): Node<T> => {
-  const own = opts.own ?? typeof target.terminate === 'function'
+export function fromPostMessage<T>(target: PostTarget, options: PostMessageOptions<T> = {}): Node<T> {
+  const own = options.own ?? typeof target.terminate === 'function'
 
-  return defineNode<T>((host) => {
+  return new TransportNode<T>((host) => {
     const on = (event: { data: unknown }) => host.deliver(event.data as T)
     target.addEventListener('message', on)
     target.start?.()
@@ -88,5 +94,5 @@ export const fromPostMessage = <T>(target: PostTarget, opts: PostMessageOptions<
         else target.close?.()
       },
     }
-  }, opts)
+  }, options)
 }

@@ -5,14 +5,19 @@ import { format } from './text.ts'
 /**
  * Reading a wire value into the type its JSON Schema fragment declares.
  *
- * Argv and a query string have the same problem — everything arrives as a string, and the
- * schema is the only thing that knows what it was meant to be. This lived on `Arg` first,
- * which is why the behaviour is spelled out in terms the command line cares about; the HTTP
- * layer needs exactly the same decisions, so it moved here rather than being written twice.
+ * Argv and a query string have the same problem: everything arrives as a string, and only the
+ * schema knows what it was meant to be. `Schema.validate` converts for TypeBox but not for a
+ * standard schema, and a route must not behave differently by schema library — so coercion
+ * happens here, before validation, for both.
  *
- * `Schema.validate` would coerce for TypeBox on its own via `Value.Convert`, but not for a
- * standard schema, and a route's behaviour must not depend on which schema library its author
- * reached for. Coercing here, before validation, is what keeps the two dialects identical.
+ * @example
+ * ```ts
+ * tokens({ type: 'integer' }, ['5']) // 5
+ * tokens({ type: 'array', items: { type: 'integer' } }, ['1', '2']) // [1, 2]
+ * tokens({ type: 'integer' }, ['nope']) // 'nope' — the validator reports it
+ * ```
+ *
+ * @module
  */
 
 /** Enumerated values, whether spelled as `enum` or as a union of `const` branches. */
@@ -26,11 +31,14 @@ export const choices = (json: Schema.Json): unknown[] | undefined => {
 }
 
 /**
- * One token to a typed value.
+ * One token to a typed value. The error side is the *expectation*, not a sentence, so each
+ * caller frames it for its own transport — `Arg` names the flag, HTTP names the input key.
  *
- * The error side is the *expectation* — `a boolean`, `one of a, b` — not a full sentence, so
- * each caller can frame it for its own transport: `Arg` names the flag, the HTTP layer names
- * the input key.
+ * @example
+ * ```ts
+ * token({ type: 'boolean' }, 'yes') // { ok: true, value: true }
+ * token({ enum: ['a', 'b'] }, 'c') // { ok: false, error: 'one of a, b' }
+ * ```
  */
 export const token = (json: Schema.Json, value: string): Result<unknown, string> => {
   const options = choices(json)
@@ -85,14 +93,9 @@ export const token = (json: Schema.Json, value: string): Result<unknown, string>
 }
 
 /**
- * Collected tokens to a value, never failing.
- *
- * A token that cannot be read is handed back as the string it was, so the *validator* reports
- * it. That keeps one issue format across both transports — a bad `?page=x` and a bad `--page x`
- * produce the same `Schema.Issue`, pathed by the input key — and it is why nothing here throws.
- *
- * An array soaks up every token; anything else takes the last, so a repeated flag and a repeated
- * query parameter agree on which one wins.
+ * Collected tokens to a value, never failing. An unreadable token is handed back as the string
+ * it was, so the *validator* reports it and a bad `?page=x` and a bad `--page x` produce the
+ * same `Schema.Issue`. An array soaks up every token; anything else takes the last.
  */
 export const tokens = (json: Schema.Json | undefined, values: string[]): unknown => {
   const last = values[values.length - 1]

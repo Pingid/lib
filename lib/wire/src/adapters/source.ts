@@ -1,109 +1,73 @@
-import type { Meta, Node, Unsub } from '../core.ts'
+/*--------------------------------------------------------------------------
 
-/**
- * Peers that arrive over time, and who closes them.
- *
- * @example
- * ```ts
- * const stop = listening(server)(hub)
- * stop() // stops accepting, and closes everyone it accepted
- * ```
- */
+@pingid/lib-wire/adapters
 
-/**
- * The part of a hub a source needs. `Hub` satisfies it.
- *
- * @example
- * ```ts
- * const into: Adder<Frame> = hub
- * ```
- */
-export interface Adder<T> {
-  add(node: Node<T>, meta?: Meta): Unsub
-}
+The MIT License (MIT)
 
-/**
- * @example
- * ```ts
- * const adders: Adder<Frame> = adders(fromSocket(socket), fromWorker(worker))
- * ```
- */
-export const adders = <T>(...adders: Adder<T>[]): Adder<T> => {
-  return {
-    add: (node, meta) => {
-      const offs = adders.map((adder) => adder.add(node, meta))
-      return () => offs.forEach((off) => off())
-    },
-  }
-}
+Copyright (c) 2026 Dan Beaven <dm.beaven@gmail.com>
 
-/**
- * Something that feeds a hub until you stop it.
- *
- * @example
- * ```ts
- * const workers = (count: number): Source<Frame> => (into) => {
- *   const offs = Array.from({ length: count }, () => into.add(fromWorker(new Worker(url))))
- *   return () => offs.forEach((off) => off())
- * }
- * hub.add !== undefined && workers(3)(hub)
- * ```
- */
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+---------------------------------------------------------------------------*/
+
+import type { Adder, Meta } from '../hub/index.ts'
+import type { Node, Unsub } from '../node/node.ts'
+
+const noop: Unsub = () => {}
+
+// ------------------------------------------------------------------
+// Source
+// ------------------------------------------------------------------
+/** Something that feeds an Adder peers until you stop it */
 export type Source<T> = (into: Adder<T>) => Unsub
 
-/**
- * The half handed to `source`'s `open`.
- *
- * @example
- * ```ts
- * source<Frame>((host) => {
- *   server.on('connection', (socket) => host.offer(fromSocket(socket), { name: socket.id }))
- *   return () => server.close()
- * })
- * ```
- */
+// ------------------------------------------------------------------
+// SourceHost
+// ------------------------------------------------------------------
+/** The half handed to source's open */
 export interface SourceHost<T> {
-  /**
-   * Closed rather than added once the source has stopped, so nothing is orphaned.
-   *
-   * @example
-   * ```ts
-   * host.offer(fromSocket(socket), { name: socket.remoteAddress })
-   * ```
-   */
+  /** Closed rather than added once the source has stopped, so nothing is orphaned */
   offer(node: Node<T>, meta?: Meta): void
   fail(err: unknown): void
-  /**
-   * Aborts when the source stops. Hand it to anything that takes one.
-   *
-   * @example
-   * ```ts
-   * server.on('connection', on, { signal: host.signal })
-   * ```
-   */
+  /** Aborts when the source stops. Hand it to anything that takes one. */
   readonly signal: AbortSignal
 }
 
-/**
- * @example
- * ```ts
- * source(open, { onError: (err) => console.error(err) })
- * ```
- */
+// ------------------------------------------------------------------
+// SourceOptions
+// ------------------------------------------------------------------
 export interface SourceOptions {
   onError?: ((err: unknown) => void) | undefined
 }
 
-const noop: Unsub = () => {}
-
+// ------------------------------------------------------------------
+// Source
+// ------------------------------------------------------------------
 /**
- * Owns what it produced: the teardown stops accepting, then closes every node it offered.
+ * Creates a Source that owns what it produced: the teardown stops accepting, then closes
+ * every node it offered.
  *
  * @example
  * ```ts
- * const spawned: Source<Frame> = source((host) => {
+ * const spawned = source<Frame>((host) => {
  *   const worker = new Worker(url)
- *   host.offer(fromWorker(worker), { name: 'worker' })
+ *   host.offer(fromPostMessage(worker), { name: 'worker' })
  *   host.signal.addEventListener('abort', () => worker.terminate())
  * })
  *
@@ -111,17 +75,17 @@ const noop: Unsub = () => {}
  * stop()
  * ```
  */
-export const source = <T>(open: (host: SourceHost<T>) => Unsub | void, opts: SourceOptions = {}): Source<T> => {
+export function source<T>(open: (host: SourceHost<T>) => Unsub | void, options: SourceOptions = {}): Source<T> {
   return (into) => {
     const offs = new Set<Unsub>()
-    const ac = new AbortController()
+    const controller = new AbortController()
     let attached: Unsub | null = null
     let stopped = false
 
     const host: SourceHost<T> = {
-      signal: ac.signal,
+      signal: controller.signal,
       fail: (err) => {
-        if (opts.onError) return opts.onError(err)
+        if (options.onError) return options.onError(err)
         queueMicrotask(() => {
           throw err
         })
@@ -139,18 +103,31 @@ export const source = <T>(open: (host: SourceHost<T>) => Unsub | void, opts: Sou
     const stop: Unsub = () => {
       if (stopped) return
       stopped = true
-      ac.abort()
+      controller.abort()
       attached?.()
       for (const off of [...offs]) off()
       offs.clear()
     }
 
-    // Assigned after, because `open` may stop the source from inside itself.
+    // Assigned after, because open may stop the source from inside itself.
     const off = open(host)
     if (off) {
       if (stopped) off()
       else attached = off
     }
     return stopped ? noop : stop
+  }
+}
+
+// ------------------------------------------------------------------
+// Adders
+// ------------------------------------------------------------------
+/** Creates an Adder that hands every node to each of the given adders */
+export function adders<T>(...into: readonly Adder<T>[]): Adder<T> {
+  return {
+    add: (node, meta) => {
+      const offs = into.map((one) => one.add(node, meta))
+      return () => offs.forEach((off) => off())
+    },
   }
 }

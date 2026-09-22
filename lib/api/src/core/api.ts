@@ -30,7 +30,6 @@ export interface Method<
 }
 
 export const isGroup = <T extends Type>(node: T): node is T & Group => node[Tag] === 'group'
-
 export const group = <const O extends (Method.Any | Group<any>)[]>(
   spec: Meta & { methods: O },
 ): Group<Group.GroupContexts<O[number]>> => ({ ...spec, [Tag]: 'group' }) as any
@@ -53,10 +52,20 @@ export const method: {
   ): Method<Static<I>, Static<O>, C>
 
   // ---------------- Standard schema --------------------------
-  <I extends Struct, O, C extends Struct = {}>(
-    handle: (input: I, context: C) => O,
-    spec: Method.Fields<I, O>,
-  ): Method<I, O, C>
+  <I extends Schema.Type, O extends Schema.Type, C extends Struct = {}>(
+    spec: Meta & {
+      in: I
+      out?: O
+      handle: (
+        input: Schema.Output<I>,
+        context: C,
+      ) => Schema.Output<O> | Promise<Schema.Output<O>> | AsyncIterable<Schema.Output<O>>
+    },
+  ): Method<
+    Schema.Output<I> extends Struct ? Schema.Output<I> : never,
+    Schema.Output<O> extends Struct ? Schema.Output<O> : never,
+    C
+  >
 } = (handle: any, spec?: any) => {
   return typeof handle === 'function' ? { ...spec, handle } : handle
 }

@@ -1,8 +1,11 @@
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from '@standard-schema/spec'
-import { KindGuard, type TSchema as TTypeboxSchema } from '@sinclair/typebox/type'
+import { KindGuard, type Static, type TSchema as TTypeboxSchema } from '@sinclair/typebox/type'
 import { Value } from '@sinclair/typebox/value'
 
 export type Type<Output = unknown, Input = Output> = Standard<Input, Output> | TSchema
+
+export type Output<T extends Type> =
+  T extends Standard<any, infer Output> ? Output : T extends TTypeboxSchema ? Static<T> : never
 
 /**
  * TypeBox's schema type, which does not carry its static type — so a `Schema<Output>`

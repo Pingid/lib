@@ -1,6 +1,14 @@
+/**
+ * Building the flat input a handler receives.
+ *
+ * Two ways in, because there are two kinds of caller: `assemble` reads a raw `Request` itself,
+ * and `flatten` rebuilds the same object from parts a framework has already parsed.
+ *
+ * @module
+ */
 import { tokens } from '../core/coerce.ts'
 import type { Schema } from '../core/index.ts'
-import type { Route } from './route.ts'
+import type * as Route from './route.ts'
 import type { Struct } from './util.ts'
 
 interface Body {
@@ -12,12 +20,15 @@ interface Body {
 }
 
 /**
- * The flat input a handler receives, drawn from wherever the bindings say.
+ * The flat input a handler receives, drawn from wherever the bindings say. Sources are
+ * disjoint by construction, so there is no precedence rule. Nothing ever writes `undefined` —
+ * an absent value omits the key, so `required` fires and `default` applies.
  *
- * Sources are disjoint by construction — the spec is checked for overlap — so there is no
- * precedence rule here. Nothing ever writes `undefined`: an absent value means the key is
- * *omitted*, so a schema's `required` fires and its `default` applies, both of which writing
- * `undefined` would defeat.
+ * @example
+ * ```ts
+ * // GET /orgs/acme/repos/lib?page=2  with  x-request-id: abc
+ * await assemble(route, request) // { org: 'acme', repo: 'lib', page: 2, requestId: 'abc' }
+ * ```
  */
 export const assemble = async (
   route: Route.Node,
@@ -146,4 +157,37 @@ const parse = (header: string | null): Record<string, string> => {
   }
 
   return out
+}
+
+/**
+ * The flat input, rebuilt from parts a framework has already parsed and validated. Re-reading
+ * the `Request` with `assemble` would work, but would decode and validate twice — reading the
+ * parts back is what makes handing the schemas over worth doing.
+ *
+ * @example
+ * ```ts
+ * flatten(route, { path: ctx.params, query: ctx.query, body: ctx.body }, ctx.request)
+ * ```
+ */
+export const flatten = (
+  route: Route.Node,
+  parts: Partial<Record<Route.Source, unknown>>,
+  request?: Request,
+): Struct => {
+  const input: Struct = {}
+
+  for (const [key, binding] of Object.entries(route.bindings)) {
+    if (binding.source === 'raw') {
+      if (request) input[key] = request
+      continue
+    }
+
+    const part = parts[binding.source]
+    if (part === null || typeof part !== 'object') continue
+
+    const value = (part as Struct)[binding.name]
+    if (value !== undefined) input[key] = value
+  }
+
+  return input
 }

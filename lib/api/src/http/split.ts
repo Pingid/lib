@@ -1,32 +1,36 @@
+/**
+ * Splitting one flat input schema into the per-source objects a framework validates.
+ *
+ * @module
+ */
 import { KindGuard, Type, type ObjectOptions, type TObject, type TSchema } from '@sinclair/typebox'
 
 import type { Schema } from '../core/index.ts'
-import type { Route } from './route.ts'
+import type * as Route from './route.ts'
 
-export declare namespace Split {
-  interface Parts {
-    params?: TObject
-    query?: TObject
-    headers?: TObject
-    cookie?: TObject
-    body?: TObject
-  }
+export interface Parts {
+  params?: TObject
+  query?: TObject
+  headers?: TObject
+  cookie?: TObject
+  body?: TObject
 }
 
 /**
  * The flat input schema as one object per source, for adapters that validate ahead of the
- * handler.
+ * handler. Property schemas are reused by reference, so refinements and `OptionalKind` ride
+ * along. `Type.Pick` cannot do this: it keys by the *input* key where a framework needs the
+ * wire name, and drops the parent's `additionalProperties`.
  *
- * Property schemas are reused **by reference**, so `OptionalKind`, refinements and transforms
- * ride along and `Type.Object` recomputes `required` from the markers. `Type.Pick` would be the
- * obvious tool and cannot be used: it keys the result by the *input* key, while a framework
- * needs the wire name (`x-request-id`, not `requestId`), and it drops the parent's
- * `additionalProperties` — which is the wrong default in opposite directions for query and body.
+ * A standard schema yields nothing — approximating one as TypeBox would give the framework a
+ * validator that disagrees with the real one, so those routes validate once in `Schema.validate`.
  *
- * A standard schema yields nothing. Approximating one as TypeBox would hand the framework a
- * validator that disagrees with the real one, so those routes validate once, in `Schema.validate`.
+ * @example
+ * ```ts
+ * of(schema, route.bindings) // { params: TObject, query: TObject, headers: TObject }
+ * ```
  */
-export const split = (schema: Schema.Type | undefined, bindings: Route.Bindings): Split.Parts => {
+export const of = (schema: Schema.Type | undefined, bindings: Route.Bindings): Parts => {
   if (schema === undefined || !KindGuard.IsObject(schema)) return {}
   if (KindGuard.IsTransform(schema)) throw new Error('A transformed input schema cannot be split per source')
 
