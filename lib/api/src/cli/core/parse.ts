@@ -1,5 +1,5 @@
 import { CliError } from './error.ts'
-import { tokenize } from './token.ts'
+import { tokenize, type Token } from './token.ts'
 import type { Arg } from '../arg.ts'
 import type { Cmd } from '../cmd.ts'
 
@@ -42,14 +42,14 @@ export const route = (root: Cmd.Node, argv: string[]): Parse.Route => {
     if (token.kind === 'terminator') break
 
     if (token.kind === 'long' || token.kind === 'short') {
-      const arg = global(cmd, token.kind === 'long' ? token.name : token.body)
-      if (!arg) break
+      const option = lift(cmd, token)
+      if (!option) break
 
       leading.push(token.text)
       index += 1
 
-      // A value-taking global written as `--flag value` carries its value along.
-      if (!arg.boolean() && token.inline === undefined && index < items.length) leading.push(items[index++]!.text)
+      // A value-taking global written as `--flag value` or `-f value` carries its value along.
+      if (option.detached && index < items.length) leading.push(items[index++]!.text)
       continue
     }
 
@@ -66,6 +66,42 @@ export const route = (root: Cmd.Node, argv: string[]): Parse.Route => {
 /** What `route` accepts ahead of a subcommand: an option from here up, or from anywhere below. */
 export const global = (cmd: Cmd.Node, name: string): Arg.Any | undefined =>
   [...cmd.globals(), ...cmd.subtree()].find((arg) => arg.matches(name))
+
+/**
+ * Read an option token ahead of a subcommand the way `parse` reads it at the leaf, so the walk
+ * accepts every form the command itself would: `--flag`, `--flag=value`, `--no-flag`, `-f`,
+ * `-f value`, `-fvalue`, `-f=value`, and boolean bundles like `-abc`.
+ *
+ * `detached` says the value is still the next argv element rather than part of this token.
+ */
+const lift = (cmd: Cmd.Node, token: Token.Long | Token.Short): { detached: boolean } | undefined => {
+  if (token.kind === 'long') {
+    const arg = global(cmd, token.name) ?? negatable(cmd, token.name)
+    if (!arg) return undefined
+    return { detached: !arg.boolean() && token.inline === undefined }
+  }
+
+  // `-=x` tokenizes to an empty body; there is no option there to lift.
+  if (token.body.length === 0) return undefined
+
+  for (let position = 0; position < token.body.length; position++) {
+    const arg = global(cmd, token.body[position]!)
+    if (!arg) return undefined
+    if (arg.boolean()) continue
+
+    // The rest of the body is the value, or an `=value` follows; either way the token is whole.
+    return { detached: position + 1 === token.body.length && token.inline === undefined }
+  }
+
+  return { detached: false }
+}
+
+/** `--no-flag` turns off a boolean, so the walk has to see past the prefix to find it. */
+const negatable = (cmd: Cmd.Node, name: string): Arg.Any | undefined => {
+  if (!name.startsWith('no-')) return undefined
+  const arg = global(cmd, name.slice(3))
+  return arg?.boolean() ? arg : undefined
+}
 
 /**
  * Turn the remaining argv into the command's input.

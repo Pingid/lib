@@ -111,9 +111,6 @@ importers:
         specifier: ^2.7.0
         version: 2.7.0
     devDependencies:
-      '@pingid/lib-workspace':
-        specifier: link:../workspace
-        version: link:../workspace
       json-schema-to-typescript:
         specifier: ^16.0.0
         version: 16.0.0

@@ -21,7 +21,7 @@ const dir = root('pkg')
 
 const formats = [
   { format: 'es', ext: 'js' },
-  { format: 'cjs', ext: 'cjs' },
+  // { format: 'cjs', ext: 'cjs' },
 ] as const
 
 /**

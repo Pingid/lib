@@ -80,9 +80,52 @@ describe('route', () => {
     expect(route(['-c=x', 'build'])).toEqual({ cmd: 'build', argv: ['-c=x'] })
   })
 
-  // `global` strips dashes and takes the part before `=`, so a glued short never matches.
-  test('a glued short value is not recognised, and stops the walk', () => {
-    expect(route(['-cx', 'build'])).toEqual({ cmd: 'app', argv: ['-cx', 'build'] })
+  test('a glued short value keeps the walk going, and stays one token', () => {
+    expect(route(['-cx', 'build'])).toEqual({ cmd: 'build', argv: ['-cx'] })
+    expect(route(['-c/tmp/a.ts', 'build', 'once'])).toEqual({ cmd: 'once', argv: ['-c/tmp/a.ts'] })
+  })
+
+  test('the negated form of a boolean global is lifted', () => {
+    expect(route(['--no-trace', 'build'])).toEqual({ cmd: 'build', argv: ['--no-trace'] })
+  })
+
+  // `--no-config` is not a boolean, so the prefix means nothing and the walk stops.
+  test('the negated form is only read for a boolean', () => {
+    expect(route(['--no-config', 'build'])).toEqual({ cmd: 'app', argv: ['--no-config', 'build'] })
+  })
+
+  // The tree above declares its shorts as args rather than options, and only an option is
+  // liftable — bundles need a root whose globals carry the short forms.
+  describe('short bundles', () => {
+    const bundled = (argv: string[]) => {
+      const root = Cmd.build('app')
+        .option(
+          Arg.boolean('verbose', { alias: 'v' }),
+          Arg.boolean('quiet', { alias: 'q' }),
+          Arg.string('config', { alias: 'c' }),
+        )
+        .with(Cmd.build('build'))
+
+      const result = Parse.route(root, argv)
+      return { cmd: result.cmd.name, argv: result.argv }
+    }
+
+    test('a bundle of booleans is lifted whole', () => {
+      expect(bundled(['-vq', 'build'])).toEqual({ cmd: 'build', argv: ['-vq'] })
+    })
+
+    test('a bundle ending in a value-taking short takes the next token with it', () => {
+      expect(bundled(['-vc', 'x', 'build'])).toEqual({ cmd: 'build', argv: ['-vc', 'x'] })
+    })
+
+    test('a bundle whose value is glued on, or inline, stays one token', () => {
+      expect(bundled(['-vcx', 'build'])).toEqual({ cmd: 'build', argv: ['-vcx'] })
+      expect(bundled(['-vc=x', 'build'])).toEqual({ cmd: 'build', argv: ['-vc=x'] })
+    })
+
+    test('an unknown character anywhere in a bundle stops the walk', () => {
+      expect(bundled(['-vz', 'build'])).toEqual({ cmd: 'app', argv: ['-vz', 'build'] })
+    })
   })
 
   test('accepts an option declared only on a descendant', () => {

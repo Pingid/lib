@@ -1,5 +1,7 @@
 {
   "extends": "../../workspace/tsconfig/tsconfig.base.json",
+  // "compilerOptions": { "types": ["node"] },
   "include": ["src"],
-  "exclude": ["cli"]
+  "exclude": ["cli"],
+  "references": [{ "path": "tsconfig.cli.json" }]
 }
