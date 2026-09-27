@@ -1,7 +1,19 @@
 import ts from 'typescript'
 
 import * as Ast from './ast.ts'
-import { Name, Route, mapTypes, type Api, type Body, type Decl, type In, type Param } from './model.ts'
+import {
+  Media,
+  Name,
+  Route,
+  mapTypes,
+  type Api,
+  type Body,
+  type Decl,
+  type Header,
+  type In,
+  type Param,
+  type Reply,
+} from './model.ts'
 
 /** How the routes are laid out. Shared by `Emit.routes` and `PrintOptions`. */
 export type Shape = {
@@ -9,6 +21,12 @@ export type Shape = {
   root?: string
   /** The type emitted for one route. Replace it to change the generated shape wholesale. */
   route?: (route: Route) => ts.TypeNode
+  /**
+   * The generic a `text/event-stream` body is wrapped in, so a stream reads as one when typed:
+   * `ServerSentEvent<Tick>` rather than a bare `Tick`. It is declared alongside the routes, under a
+   * free name, whenever a route streams. Defaults to `ServerSentEvent`; `false` leaves the data type bare.
+   */
+  events?: string | false
 }
 
 /**
@@ -25,8 +43,25 @@ export const Emit = {
   decls: (api: Api): ts.Statement[] => api.decls.map(declare),
 
   /** The routes, nested by group then name, as one interface. */
-  routes: (api: Api, options: Shape = {}): ts.Statement =>
-    Ast.iface(options.root ?? 'Routes', tree(api.routes, options.route ?? Emit.shape)),
+  routes: (api: Api, options: Shape = {}): ts.Statement => {
+    const shape = { ...options, events: events(api, options) }
+
+    return Ast.iface(options.root ?? 'Routes', tree(api.routes, options.route ?? ((r) => Emit.shape(r, shape))))
+  },
+
+  /**
+   * The event type a `text/event-stream` body is wrapped in, when a route has one. `Emit.routes`
+   * refers to it under the same name, so emit both or neither:
+   *
+   * ```ts
+   * export type ServerSentEvent<T> = { data: T; event?: string; id?: string; retry?: number }
+   * ```
+   */
+  events: (api: Api, options: Shape = {}): ts.Statement[] => {
+    const name = events(api, options)
+
+    return name && api.routes.some((route) => route.replies.some(streams)) ? [serverSentEvent(name)] : []
+  },
 
   /**
    * The default per-route type. Every field is always there, whether or not the route uses it,
@@ -36,46 +71,97 @@ export const Emit = {
    * {
    *   method: "POST";
    *   url: "/api/auth/admin/set-role";
-   *   request: { body: {...}; params?: never; query?: Record<string, string>; headers?: Record<string, string> };
+   *   request: { body: {...}; contentType?: "application/json"; params?: never; query?: Record<string, string>; headers?: Record<string, string> };
    *   response: { 200: SetUserRole };
+   *   responses: { 200: { content: { "application/json": SetUserRole }; headers: {} } };
    * }
    * ```
+   *
+   * `response` is the body by status, the usual read; `responses` is the whole of each response
+   * the way the document lays it out, content type and headers included.
    */
-  shape: (route: Route): ts.TypeNode =>
+  shape: (route: Route, options: Shape = {}): ts.TypeNode =>
     Ast.obj([
       { name: 'method', type: Ast.literal(route.method.toUpperCase()) },
       { name: 'url', type: Ast.literal(route.url) },
       { name: 'request', type: Emit.input(route) },
-      { name: 'response', type: Emit.output(route) },
+      { name: 'response', type: Emit.output(route, options) },
+      { name: 'responses', type: Emit.responses(route, options) },
     ]),
 
-  /** The default file: the declarations, then the routes interface. */
-  file: (api: Api, options: Shape = {}): ts.Statement[] => [...Emit.decls(api), Emit.routes(api, options)],
+  /** The default file: the declarations, the event type when something streams, then the routes interface. */
+  file: (api: Api, options: Shape = {}): ts.Statement[] => [
+    ...Emit.decls(api),
+    ...Emit.events(api, options),
+    Emit.routes(api, options),
+  ],
 
   /**
-   * What a route is called with: `body`, `params`, `query` and `headers`, always all four.
+   * What a route is called with: `body`, `contentType`, `params`, `query` and `headers`, always all five.
    *
    * A slot the document says nothing about falls back to whatever the emitted builder can
    * still do with it. Extra `query` entries are serialised and extra `headers` are spread, so
    * those stay open as `Record<string, string>`; a `params` entry the url has no placeholder
    * for and a `body` on a route that sends none would be dropped on the floor, so those close
    * to `never` rather than accepting a value that goes nowhere.
+   *
+   * `contentType` says which of the route's bodies is being sent. The preferred one — the first
+   * JSON body, else the first — may leave it off; a route that takes several becomes a union
+   * keyed on it, so the body is checked against the content type it goes out as:
+   *
+   * ```ts
+   * { params: { id: string } } & (
+   *   | { body: Thing; contentType?: "application/json" }
+   *   | { body: Blob; contentType: "application/octet-stream" }
+   * )
+   * ```
    */
-  input: (route: Route): ts.TypeNode =>
-    Ast.obj([
-      body(route),
+  input: (route: Route): ts.TypeNode => {
+    const rest = [
       slot(route, 'path', 'params', Ast.NEVER),
       slot(route, 'query', 'query', Ast.dict()),
       slot(route, 'header', 'headers', Ast.dict()),
       ...(Route.params(route, 'cookie').length ? [slot(route, 'cookie', 'cookies', Ast.NEVER)] : []),
-    ]),
+    ]
+    const [only, ...more] = variants(route)
 
-  /** What a route answers with, keyed by status. Always present, empty for a route with no replies. */
-  output: (route: Route): ts.TypeNode =>
+    if (!more.length) return Ast.obj([...(only ?? NOTHING), ...rest])
+
+    return Ast.intersection([Ast.obj(rest), Ast.union([only ?? NOTHING, ...more].map(Ast.obj))])
+  },
+
+  /**
+   * Each response by status the way the document lays it out: the body under each content type
+   * it can come as, and the headers sent with it. A status with no content has an empty `content`.
+   *
+   * ```ts
+   * { 200: { content: { "application/json": Thing; "text/plain": string }; headers: { ETag?: string } } }
+   * ```
+   */
+  responses: (route: Route, options: Shape = {}): ts.TypeNode =>
     Ast.obj(
       Route.statuses(route).map(([status, group]) => ({
         name: status,
-        type: Ast.union(group.map((reply) => reply.type)),
+        docs: group[0]?.docs,
+        type: Ast.obj([
+          {
+            name: 'content',
+            type: Ast.obj(group.flatMap((r) => (r.media === null ? [] : [{ name: r.media, type: sent(r, options) }]))),
+          },
+          { name: 'headers', type: Ast.obj((group[0]?.headers ?? []).map(field)) },
+        ]),
+      })),
+    ),
+
+  /**
+   * What a route answers with, keyed by status. Always present, empty for a route with no replies.
+   * A stream's body is typed as one event, `ServerSentEvent<Tick>`; the response is a run of them.
+   */
+  output: (route: Route, options: Shape = {}): ts.TypeNode =>
+    Ast.obj(
+      Route.statuses(route).map(([status, group]) => ({
+        name: status,
+        type: Ast.collapse(Ast.union(group.map((reply) => sent(reply, options)))),
         docs: group[0]?.docs,
       })),
     ),
@@ -127,25 +213,51 @@ export const Emit = {
    * export const requests = {
    *   "PUT /api/db/container-config": (p: Routes["PUT /api/db/container-config"]["request"]) => ({
    *     method: "PUT",
-   *     url: "/api/db/container-config",
-   *     headers: { "Content-Type": "application/json" },
+   *     url: `/api/db/container-config${search(p.query)}`,
+   *     headers: { "Content-Type": "application/json", ...p.headers },
    *     body: JSON.stringify(p.body),
    *   }),
    * }
    * ```
    *
-   * Statements rather than one, because a route with query parameters needs the helper that
-   * builds the search string; it is emitted only when something uses it.
+   * Each body is encoded for its content type: JSON as text, a form as `URLSearchParams`,
+   * multipart as `FormData` with no `Content-Type` of its own so the runtime can add the
+   * boundary, and anything else handed on as it came. A route taking several bodies picks
+   * by `contentType` at runtime.
+   *
+   * Statements rather than one, because the search string and the body encodings are built
+   * by helpers; each is emitted only when something uses it.
    */
   requests: (api: Api, options: RequestOptions = {}): ts.Statement[] => {
-    const wanted = options.search ?? (api.routes.some((route) => Route.params(route, 'query').length) && SEARCH)
-    const search = wanted ? Name.free(new Set(api.decls.map((decl) => decl.name)), wanted) : false
+    const taken = new Set(api.decls.map((decl) => decl.name))
+    const free = (name: string) => {
+      const out = Name.free(taken, name)
+
+      taken.add(out)
+
+      return out
+    }
+    const own = !options.request
+    const wanted = options.search ?? (own && api.routes.length > 0 && SEARCH)
+    const search = wanted ? free(wanted) : false
+    const uses = (test: (media: string) => boolean) =>
+      own && api.routes.some((route) => route.bodies.length === 1 && route.bodies.some((b) => test(b.media)))
+    const send = own && api.routes.some((route) => route.bodies.length > 1)
+    const encoders: Encoders = {
+      urlEncoded: send || uses(Media.form) ? free('urlEncoded') : undefined,
+      formData: send || uses(Media.multipart) ? free('formData') : undefined,
+    }
+    if (send) encoders.send = free('send')
     const keys = Emit.keys(api.routes)
     const build =
-      options.request ?? ((route: Route) => Emit.request(route, { ...options, search, at: keys.get(route.id) }))
+      options.request ??
+      ((route: Route) => Emit.request(route, { ...options, search, encoders, at: keys.get(route.id) }))
 
     return [
       ...(search ? Ast.source(searching(search)) : []),
+      ...(encoders.urlEncoded ? Ast.source(urlEncoding(encoders.urlEncoded)) : []),
+      ...(encoders.formData ? Ast.source(formEncoding(encoders.formData)) : []),
+      ...(encoders.send ? Ast.source(sending(encoders as Required<Encoders>)) : []),
       Ast.constant(
         options.name ?? 'requests',
         Ast.record(render(nest(api.routes, build), entry, (name, of) => ({ name, value: Ast.record(of) }))),
@@ -155,19 +267,31 @@ export const Emit = {
 
   /** The default builder for one route: the function `Emit.requests` puts under each name. */
   request: (route: Route, options: RequestOptions = {}): ts.Expression => {
-    const sending = Route.body(route) ?? route.bodies[0]
-    const headers: Ast.Entry[] = []
+    const names = { ...ENCODERS, ...options.encoders }
+    const [only, ...more] = route.bodies
+    const extra = { spread: Ast.member(P, 'headers') }
+    const picked = Ast.coalesce(Ast.member(P, 'contentType'), Ast.str(preferred(route)?.media ?? ''))
 
-    if (sending) headers.push({ name: 'Content-Type', value: Ast.str(sending.media) })
-    if (Route.params(route, 'header').length) headers.push({ spread: Ast.member(P, 'headers') })
+    const sent: Ast.Entry[] = more.length
+      ? [{ spread: Ast.call(Ast.id(names.send), [picked, Ast.member(P, 'body'), Ast.member(P, 'headers')]) }]
+      : [
+          {
+            name: 'headers',
+            value: Ast.record(
+              only && !Media.multipart(only.media)
+                ? [{ name: 'Content-Type', value: Ast.str(only.media) }, extra]
+                : [extra],
+            ),
+          },
+          ...(only ? [{ name: 'body', value: payload(only, names) }] : []),
+        ]
 
     return Ast.arrow(
       [Ast.param('_p', input(route, options), { fallback: needed(route) ? undefined : Ast.record([]) })],
       Ast.record([
         { name: 'method', value: Ast.str(route.method.toUpperCase()) },
         { name: 'url', value: Ast.template(url(route, options)) },
-        ...(headers.length ? [{ name: 'headers', value: Ast.record(headers) }] : []),
-        ...(sending ? [{ name: 'body', value: payload(sending) }] : []),
+        ...sent,
       ]),
     )
   },
@@ -206,7 +330,14 @@ export type RequestOptions = {
    * `Emit.requests` fills it from `Emit.keys`; without it the type is inlined.
    */
   at?: string[]
+  /** The names the body encoders were emitted under. `Emit.requests` fills it; the defaults are the bare names. */
+  encoders?: Encoders
 }
+
+/** The helpers that encode a request body, by the name each was emitted under. */
+export type Encoders = { urlEncoded?: string; formData?: string; send?: string }
+
+const ENCODERS: Required<Encoders> = { urlEncoded: 'urlEncoded', formData: 'formData', send: 'send' }
 
 /**
  * Settles every name and resolves every reference.
@@ -243,10 +374,53 @@ export const bind = (api: Api): Api => {
   return { ...resolved, decls: resolved.decls.map((decl) => ({ ...decl, name: names.get(decl.id) ?? decl.name })) }
 }
 
-const declare = (decl: Decl): ts.Statement =>
-  decl.kind === 'interface' && ts.isTypeLiteralNode(decl.type)
-    ? Ast.docs(Ast.iface(decl.name, decl.type.members), decl.docs)
-    : Ast.alias(decl.name, decl.type, decl.docs)
+const EVENTS = 'ServerSentEvent'
+
+/** The name the event type goes under: free of every declaration, so a schema called `ServerSentEvent` keeps its own. */
+const events = (api: Api, options: Shape): string | false =>
+  options.events === false ? false : Name.free(new Set(api.decls.map((decl) => decl.name)), options.events ?? EVENTS)
+
+const streams = (reply: Reply): boolean => reply.media !== null && Media.stream(reply.media)
+
+/** A reply's body as the route type shows it: a stream's wrapped as one event of it. */
+const sent = (reply: Reply, options: Shape): ts.TypeNode =>
+  streams(reply) && options.events !== false ? Ast.ref(options.events ?? EVENTS, [reply.type]) : reply.type
+
+const serverSentEvent = (name: string): ts.Statement =>
+  Ast.alias(
+    name,
+    Ast.obj([
+      { name: 'data', type: Ast.ref('T'), docs: 'The `data:` field, parsed as the document describes it.' },
+      {
+        name: 'event',
+        type: Ast.STRING,
+        optional: true,
+        docs: 'The `event:` field: the kind of event, `message` when the server names none.',
+      },
+      {
+        name: 'id',
+        type: Ast.STRING,
+        optional: true,
+        docs: 'The `id:` field, sent back as `Last-Event-ID` on reconnect.',
+      },
+      {
+        name: 'retry',
+        type: Ast.NUMBER,
+        optional: true,
+        docs: 'The `retry:` field: how long to wait before reconnecting, in milliseconds.',
+      },
+    ]),
+    'One event off a `text/event-stream` response. The body is a run of these.',
+    ['T'],
+  )
+
+const declare = (decl: Decl): ts.Statement => {
+  const docs = { description: decl.docs, deprecated: decl.deprecated }
+
+  return decl.kind === 'interface' && ts.isTypeLiteralNode(decl.type)
+    ? Ast.docs(Ast.iface(decl.name, decl.type.members), docs)
+    : Ast.alias(decl.name, decl.type, docs)
+}
 
 /** One parameter location as a field, falling back to `empty` where the route declares none. */
 const slot = (route: Route, where: In, name: string, empty: ts.TypeNode): Ast.Field => {
@@ -257,21 +431,32 @@ const slot = (route: Route, where: In, name: string, empty: ts.TypeNode): Ast.Fi
     : { name, type: empty, optional: true }
 }
 
-const field = (param: Param): Ast.Field => ({
+const field = (param: Param | Header): Ast.Field => ({
   name: param.name,
   type: param.type,
   optional: !param.required,
-  docs: param.docs,
+  docs: { description: param.docs, deprecated: param.deprecated },
 })
 
-const body = (route: Route): Ast.Field =>
-  route.bodies.length
-    ? {
-        name: 'body',
-        type: Ast.union(route.bodies.map((b) => b.type)),
-        optional: !route.bodies.some((b) => b.required),
-      }
-    : { name: 'body', type: Ast.NEVER, optional: true }
+/** The body a builder sends when not told otherwise: the first JSON one, else the first. */
+const preferred = (route: Route): Body | undefined => route.bodies.find((b) => Media.json(b.media)) ?? route.bodies[0]
+
+/** The `body` and `contentType` fields, one pair per body the route takes. */
+const variants = (route: Route): Ast.Field[][] => {
+  const fallback = preferred(route)
+  const optional = !route.bodies.some((b) => b.required)
+
+  return route.bodies.map((b) => [
+    { name: 'body', type: b.type, optional },
+    { name: 'contentType', type: Ast.literal(b.media), optional: b === fallback },
+  ])
+}
+
+/** A route that sends no body takes neither field. */
+const NOTHING: Ast.Field[] = [
+  { name: 'body', type: Ast.NEVER, optional: true },
+  { name: 'contentType', type: Ast.NEVER, optional: true },
+]
 
 /** Whether the route makes the caller pass anything at all. */
 const needed = (route: Route): boolean => route.bodies.some((b) => b.required) || route.params.some((p) => p.required)
@@ -342,17 +527,21 @@ const url = (route: Route, options: RequestOptions): (string | ts.Expression)[] 
 
   parts.push(route.url.slice(taken))
 
-  if (options.search && Route.params(route, 'query').length)
-    parts.push(Ast.call(Ast.id(options.search), [Ast.member(P, 'query')]))
+  if (options.search) parts.push(Ast.call(Ast.id(options.search), [Ast.member(P, 'query')]))
 
   return parts
 }
 
-/** JSON bodies go over the wire as text; anything else is handed on as it came. */
-const payload = (sending: Body): ts.Expression =>
-  /json/.test(sending.media)
-    ? Ast.call(Ast.member(Ast.id('JSON'), 'stringify'), [Ast.member(P, 'body')])
-    : Ast.member(P, 'body')
+/** JSON bodies go over the wire as text, forms and multipart through their encoders; anything else as it came. */
+const payload = (sending: Body, names: Required<Encoders>): ts.Expression => {
+  const value = Ast.member(P, 'body')
+
+  if (Media.json(sending.media)) return Ast.call(Ast.member(Ast.id('JSON'), 'stringify'), [value])
+  if (Media.form(sending.media)) return Ast.call(Ast.id(names.urlEncoded), [value])
+  if (Media.multipart(sending.media)) return Ast.call(Ast.id(names.formData), [value])
+
+  return value
+}
 
 const searching = (name: string) => `
 /** Renders the query parameters as a search string, leaving off the ones not passed. */
@@ -367,9 +556,54 @@ const ${name} = (params: Record<string, unknown> | undefined): string => {
 }
 `
 
+const urlEncoding = (name: string) => `
+/** Encodes an object as a form body, one field per entry and one per array item, leaving off the ones not passed. */
+const ${name} = (value: object | undefined): URLSearchParams => {
+  const form = new URLSearchParams()
+
+  for (const [key, entry] of Object.entries(value ?? {}))
+    for (const item of Array.isArray(entry) ? entry : [entry])
+      if (item !== undefined && item !== null) form.append(key, String(item))
+
+  return form
+}
+`
+
+const formEncoding = (name: string) => `
+/** Frames an object as multipart form data: bytes as files, objects as JSON, anything else as text. */
+const ${name} = (value: object | undefined): FormData => {
+  const form = new FormData()
+
+  for (const [key, entry] of Object.entries(value ?? {}))
+    for (const item of Array.isArray(entry) ? entry : [entry])
+      if (item instanceof Blob) form.append(key, item)
+      else if (item !== undefined && item !== null)
+        form.append(key, typeof item === 'object' ? JSON.stringify(item) : String(item))
+
+  return form
+}
+`
+
+const sending = (names: Required<Encoders>) => `
+/** A body encoded for the content type picked for it, with the \`Content-Type\` to send it under. Multipart sets its own. */
+const ${names.send} = (type: string, body: unknown, headers?: object): { headers: Record<string, string>; body?: BodyInit } => {
+  const multipart = /^multipart\\//i.test(type)
+  const encoded =
+    /^[^;]*[/+]json\\s*(;|$)/i.test(type) ? JSON.stringify(body)
+    : /^application\\/x-www-form-urlencoded\\s*(;|$)/i.test(type) ? ${names.urlEncoded}(body as object)
+    : multipart ? ${names.formData}(body as object)
+    : (body as BodyInit | undefined)
+
+  return { headers: { ...(multipart ? {} : { 'Content-Type': type }), ...(headers as Record<string, string>) }, body: encoded }
+}
+`
+
 const tree = (routes: Route[], route: (r: Route) => ts.TypeNode): ts.TypeElement[] =>
-  render<{ type: ts.TypeNode; docs?: string }, ts.TypeElement>(
-    nest(routes, (r) => ({ type: route(r), docs: r.docs })),
+  render<{ type: ts.TypeNode; docs?: Ast.Docs }, ts.TypeElement>(
+    nest(routes, (r) => ({
+      type: route(r),
+      docs: { summary: r.summary, description: r.docs, deprecated: r.deprecated },
+    })),
     (name, leaf) => Ast.prop({ name, type: leaf.type, docs: leaf.docs }),
     (name, of) => Ast.prop({ name, type: ts.factory.createTypeLiteralNode(of) }),
   )

@@ -22,8 +22,18 @@ export type Param = {
   required: boolean
   type: ts.TypeNode
   docs?: string
+  deprecated?: boolean
   /** The parameter as written, `$ref` already followed. */
   source: oas.ParameterObject
+}
+
+/** One response header, lifted out of any `$ref`. */
+export type Header = {
+  name: string
+  required: boolean
+  type: ts.TypeNode
+  docs?: string
+  deprecated?: boolean
 }
 
 /** One request body variant, keyed by content type. */
@@ -41,6 +51,8 @@ export type Reply = {
   media: string | null
   type: ts.TypeNode
   docs?: string
+  /** The headers the response declares. Every variant of one status carries the same list. */
+  headers: Header[]
   /** The media type's schema, `$ref` already followed. */
   schema?: oas.SchemaObject
 }
@@ -63,7 +75,11 @@ export type Route = {
   bodies: Body[]
   replies: Reply[]
   tags: string[]
+  /** The operation's one-line `summary`. */
+  summary?: string
+  /** The operation's `description`. */
   docs?: string
+  deprecated?: boolean
   /** The operation as written, `$ref`s and all. `Route.*` is the resolved read. */
   source: oas.OperationObject
 }
@@ -91,6 +107,7 @@ export type Decl = {
   /** `interface` where the type is an object literal; `type` otherwise. Defaults to `type`. */
   kind?: 'type' | 'interface'
   docs?: string
+  deprecated?: boolean
   origin?: Origin
 }
 
@@ -100,6 +117,7 @@ export type Site =
   | { in: 'param'; route: Route; param: Param }
   | { in: 'body'; route: Route; body: Body }
   | { in: 'reply'; route: Route; reply: Reply }
+  | { in: 'header'; route: Route; reply: Reply; header: Header }
 
 /** The whole editable surface. Every operator is an `Api -> Api`. */
 export type Api = { routes: Route[]; decls: Decl[] }
@@ -158,8 +176,33 @@ export const Route = {
   types: (route: Route): ts.TypeNode[] => [
     ...route.params.map((p) => p.type),
     ...route.bodies.map((b) => b.type),
-    ...route.replies.map((r) => r.type),
+    ...route.replies.flatMap((r) => [r.type, ...r.headers.map((h) => h.type)]),
   ],
+}
+
+/**
+ * Tells content types apart by how they go over the wire. Each takes the media type as the
+ * document spells it, parameters and all: `Media.json('application/problem+json; charset=utf-8')`.
+ */
+export const Media = {
+  /** `application/json`, and any `+json` suffix such as `application/problem+json`. */
+  json: (media: string): boolean => /^[^;]*[/+]json\s*(;|$)/i.test(media),
+
+  /** `application/x-www-form-urlencoded`. */
+  form: (media: string): boolean => /^application\/x-www-form-urlencoded\s*(;|$)/i.test(media),
+
+  /** `multipart/*`, which the runtime has to frame itself, boundary and all. */
+  multipart: (media: string): boolean => /^multipart\//i.test(media),
+
+  /** `text/event-stream`: the schema describes one event's data, not the body. */
+  stream: (media: string): boolean => /^text\/event-stream\s*(;|$)/i.test(media),
+
+  /** Readable as a string: `text/*`, XML, and the structured types above. */
+  text: (media: string): boolean =>
+    /^text\//i.test(media) || /[/+]xml\s*(;|$)/i.test(media) || Media.json(media) || Media.form(media),
+
+  /** Everything else: bytes, `application/octet-stream`, `image/png` and the like. */
+  binary: (media: string): boolean => !Media.text(media) && !Media.multipart(media),
 }
 
 /** Reads and references over the declaration list. */
@@ -202,6 +245,8 @@ export const Decl = {
     if (at.in === 'decl') return at.decl.id
     if (at.in === 'param') return `#/routes/${at.route.id}/params/${at.param.in}/${at.param.name}`
     if (at.in === 'body') return `#/routes/${at.route.id}/body/${at.body.media}`
+    if (at.in === 'header')
+      return `#/routes/${at.route.id}/replies/${at.reply.status}/${at.reply.media ?? 'empty'}/headers/${at.header.name}`
 
     return `#/routes/${at.route.id}/replies/${at.reply.status}/${at.reply.media ?? 'empty'}`
   },
@@ -211,6 +256,7 @@ export const Decl = {
     if (at.in === 'decl') return at.decl.docs
     if (at.in === 'param') return at.param.docs
     if (at.in === 'reply') return at.reply.docs
+    if (at.in === 'header') return at.header.docs
 
     return undefined
   },
@@ -259,7 +305,7 @@ export const Name = {
 }
 
 /**
- * Applies `f` to every type in the model: declarations, parameters, bodies and replies.
+ * Applies `f` to every type in the model: declarations, parameters, bodies, replies and their headers.
  * `at` says which of those the type came from, so one rewrite can treat them differently.
  */
 export const mapTypes = (api: Api, f: (type: ts.TypeNode, at: Site) => ts.TypeNode): Api => ({
@@ -268,7 +314,14 @@ export const mapTypes = (api: Api, f: (type: ts.TypeNode, at: Site) => ts.TypeNo
     ...route,
     params: route.params.map((param) => ({ ...param, type: f(param.type, { in: 'param', route, param }) })),
     bodies: route.bodies.map((body) => ({ ...body, type: f(body.type, { in: 'body', route, body }) })),
-    replies: route.replies.map((reply) => ({ ...reply, type: f(reply.type, { in: 'reply', route, reply }) })),
+    replies: route.replies.map((reply) => ({
+      ...reply,
+      type: f(reply.type, { in: 'reply', route, reply }),
+      headers: reply.headers.map((header) => ({
+        ...header,
+        type: f(header.type, { in: 'header', route, reply, header }),
+      })),
+    })),
   })),
 })
 

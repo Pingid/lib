@@ -70,14 +70,19 @@ export { type OpenAPI3 } from 'openapi-typescript'
  * Api.print(api, { emit: (api) => [...Emit.file(api), ...Emit.requests(api)] })
  *
  * // export const requests = {
- * //   "POST /api/things/{id}": (p: { path: { id: string }; body: Thing }) => ({
+ * //   "POST /api/things/{id}": (_p: Routes["POST /api/things/{id}"]["request"]) => ({
  * //     method: "POST",
- * //     url: `/api/things/${p.path.id}`,
- * //     headers: { "Content-Type": "application/json" },
- * //     body: JSON.stringify(p.body),
+ * //     url: `/api/things/${_p.params.id}${search(_p.query)}`,
+ * //     headers: { "Content-Type": "application/json", ..._p.headers },
+ * //     body: JSON.stringify(_p.body),
  * //   }),
  * // }
  * ```
+ *
+ * Content types carry through: a route taking several bodies is keyed on `contentType`, each
+ * body is encoded for its own (`FormData`, `URLSearchParams`, JSON or bytes as they came), and
+ * `responses` lays each status out by content type with its headers. Bytes read as `Blob`,
+ * which `ReadOptions.binary` changes.
  *
  * `Api.read` and `Api.print` are the same thing a layer down, for callers that need
  * transform options or a custom emitted shape.
@@ -99,9 +104,9 @@ export const Api = {
 
 export * as Ast from './ast.ts'
 export { Doc, type DocOptions, type Source } from './doc.ts'
-export { Emit, bind, type RequestOptions, type Shape } from './emit.ts'
-export { Decl, Is, Name, Pattern, Route } from './model.ts'
-export type { Body, In, Method, Origin, Param, Reply, Site } from './model.ts'
+export { Emit, bind, type Encoders, type RequestOptions, type Shape } from './emit.ts'
+export { Decl, Is, Media, Name, Pattern, Route } from './model.ts'
+export type { Body, Header, In, Method, Origin, Param, Reply, Site } from './model.ts'
 export { Op, type Test } from './ops.ts'
 export type { PrintOptions } from './print.ts'
 export type { ReadOptions } from './read.ts'

@@ -2,6 +2,7 @@ import ts from 'typescript'
 import {
   NEVER,
   QUESTION_TOKEN,
+  STRING,
   UNKNOWN,
   addJSDocComment,
   astToString,
@@ -9,12 +10,15 @@ import {
   tsPropertyIndex,
 } from 'openapi-typescript'
 
-export { NEVER, UNKNOWN, tsIntersection as intersection, tsUnion as union } from 'openapi-typescript'
+export { NEVER, NUMBER, STRING, UNKNOWN, tsIntersection as intersection, tsUnion as union } from 'openapi-typescript'
 
 const f = ts.factory
 
+/** What a doc comment carries: a bare description, or a summary line, a description and a deprecation. */
+export type Docs = string | { summary?: string; description?: string; deprecated?: boolean }
+
 /** One member of an object type. */
-export type Field = { name: string; type: ts.TypeNode; optional?: boolean; docs?: string }
+export type Field = { name: string; type: ts.TypeNode; optional?: boolean; docs?: Docs }
 
 export const obj = (fields: Field[]): ts.TypeLiteralNode => f.createTypeLiteralNode(fields.map(prop))
 
@@ -29,15 +33,29 @@ export const prop = (field: Field): ts.PropertySignature =>
     field.docs,
   )
 
-export const alias = (name: string, type: ts.TypeNode, description?: string): ts.TypeAliasDeclaration =>
-  docs(f.createTypeAliasDeclaration(tsModifiers({ export: true }), name, undefined, type), description)
+export const alias = (
+  name: string,
+  type: ts.TypeNode,
+  description?: Docs,
+  params?: readonly string[],
+): ts.TypeAliasDeclaration =>
+  docs(
+    f.createTypeAliasDeclaration(
+      tsModifiers({ export: true }),
+      name,
+      params?.map((param) => f.createTypeParameterDeclaration(undefined, param)),
+      type,
+    ),
+    description,
+  )
 
 export const iface = (name: string, members: readonly ts.TypeElement[]): ts.InterfaceDeclaration =>
   f.createInterfaceDeclaration(tsModifiers({ export: true }), name, undefined, undefined, members)
 
 export const literal = (value: string): ts.TypeNode => f.createLiteralTypeNode(f.createStringLiteral(value))
 
-export const ref = (name: string): ts.TypeReferenceNode => f.createTypeReferenceNode(f.createIdentifier(name))
+export const ref = (name: string, args?: readonly ts.TypeNode[]): ts.TypeReferenceNode =>
+  f.createTypeReferenceNode(f.createIdentifier(name), args)
 
 /** `Target["a"]["b"]` — the type-level read of a nested member. */
 export const index = (target: ts.TypeNode, path: readonly string[]): ts.TypeNode =>
@@ -46,8 +64,6 @@ export const index = (target: ts.TypeNode, path: readonly string[]): ts.TypeNode
 /** `Record<K, V>`, with `Record<string, string>` the usual case. */
 export const dict = (key: ts.TypeNode = STRING, value: ts.TypeNode = STRING): ts.TypeNode =>
   f.createTypeReferenceNode(f.createIdentifier('Record'), [key, value])
-
-const STRING = f.createKeywordTypeNode(ts.SyntaxKind.StringKeyword)
 
 /**
  * The value half. Everything above builds types; a generated file that carries runtime code —
@@ -98,6 +114,10 @@ export const call = (target: ts.Expression, args: readonly ts.Expression[] = [])
 
 export const id = (name: string): ts.Identifier => f.createIdentifier(name)
 
+/** `value ?? fallback`. */
+export const coalesce = (value: ts.Expression, fallback: ts.Expression): ts.Expression =>
+  f.createBinaryExpression(value, ts.SyntaxKind.QuestionQuestionToken, fallback)
+
 export const str = (value: string): ts.StringLiteral => f.createStringLiteral(value)
 
 /** `target.name`, falling back to `target["name"]` where the name is not a legal identifier. */
@@ -144,8 +164,12 @@ export const source = (code: string): ts.Statement[] => [
 const IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/
 
 /** openapi-typescript types its JSDoc helper for property signatures; the underlying API is not that narrow. */
-export const docs = <T extends ts.Node>(node: T, description?: string): T => {
-  if (description) addJSDocComment({ description }, node as unknown as ts.PropertySignature)
+export const docs = <T extends ts.Node>(node: T, docs?: Docs): T => {
+  const { summary, description, deprecated } = typeof docs === 'string' ? { description: docs } : (docs ?? {})
+
+  if (summary || description || deprecated)
+    addJSDocComment({ summary, description, deprecated }, node as unknown as ts.PropertySignature)
+
   return node
 }
 

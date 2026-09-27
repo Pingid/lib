@@ -10,7 +10,7 @@ export interface DevCtx {
   config: ResolvedConfig
   server: ViteDevServer
   /** Re-run `cb` whenever `file` changes. Relative paths resolve against vite root. */
-  watch: (file: string, cb: (file: string) => MaybePromise<void>) => void
+  watch: (file: string | string[], cb: (file: string) => any) => () => void
 }
 
 export interface BuildCtx {
@@ -65,14 +65,18 @@ export const lifecycle = (hooks: Hooks): Plugin => {
 
     configureServer(server) {
       if (!hooks.start) return
-      const watch = (file: string, cb: (file: string) => MaybePromise<void>) => {
-        const target = path.resolve(config.root, file)
-        server.watcher.add(target)
-        server.watcher.on('all', (_event, changed) => {
-          if (path.resolve(changed) !== target) return
-          void Promise.resolve(cb(target)).catch((e: unknown) => config.logger.error(`[${label}] ${message(e)}`))
+      const em = emitter<[string]>()
+
+      const watch = (file: string | string[], cb: (file: string) => void) => {
+        const files = Array.isArray(file) ? file : [file]
+        for (const file of files) server.watcher.add(path.resolve(config.root, file))
+        return em.on((changed) => {
+          const target = files.find((file) => path.resolve(changed).includes(file))
+          if (!target) return
+          cb(target)
         })
       }
+      server.watcher.on('all', (_event, changed) => em.emit(changed))
       cleanup = Promise.resolve(hooks.start({ config, server, watch }))
       cleanup.catch((e: unknown) => config.logger.error(`[${label}] ${message(e)}`))
     },
@@ -102,4 +106,16 @@ const pass = (root: string) => {
 const message = (error: unknown) => {
   const e = error instanceof Error ? error : new Error(String(error))
   return e.stack ?? e.message
+}
+
+const emitter = <A extends any[]>() => {
+  const listeners = new Set<(...args: A) => void>()
+  return {
+    on: (listener: (...args: A) => void) => {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+    off: (listener: (...args: A) => void) => listeners.delete(listener),
+    emit: (...args: A) => Array.from(listeners).forEach((listener) => listener(...args)),
+  }
 }

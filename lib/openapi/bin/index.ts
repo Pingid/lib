@@ -6,9 +6,13 @@ import { Api, Doc, Op, Emit } from '../src/index.ts'
 
 const cmd = c.cmd({
   name: 'openapi-ts-generate',
-  description: 'Generate TypeScript types from OpenAPI 3.0.0 schema',
+  description: 'Generate TypeScript types and request builders from an OpenAPI 3.x document',
   options: {
-    input: c.str({ description: 'The source OpenAPI 3.0.0 schema', alias: 'i', required: true }),
+    input: c.str({
+      description: 'The source OpenAPI 3.x document: a path, URL or inline JSON/YAML',
+      alias: 'i',
+      required: true,
+    }),
     output: c.str({ description: 'The output file', alias: 'o', required: false }),
   },
   positionals: ['input', 'output'],

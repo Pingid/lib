@@ -56,3 +56,4 @@ export const openapi = (p: { source: Source; output: string }) => {
   }
 }
 openapi({ source: 'http://localhost:3000/api/json', output: 'out.ts' })()
+// https://github.com/OAI/OpenAPI-Specification

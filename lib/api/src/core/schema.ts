@@ -1,12 +1,19 @@
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from '@standard-schema/spec'
-import { KindGuard, type Static, type TSchema as TTypeboxSchema } from '@sinclair/typebox/type'
+import type * as Typebox from '@sinclair/typebox/type'
 import { Value } from '@sinclair/typebox/value'
+import { KindGuard } from '@sinclair/typebox'
 
 export type Type<Output = unknown, Input = Output> = Standard<Input, Output> | TSchema
 
-export type Output<T extends Type> =
-  T extends Standard<any, infer Output> ? Output : T extends TTypeboxSchema ? Static<T> : never
+export type Output<T> =
+  T extends Standard<any, infer Output> ? Output : T extends Typebox.TSchema ? Typebox.Static<T> : never
 
+export declare namespace Type {
+  export type Object<T extends Record<string, Type> = Record<string, any>> =
+    Standard<T, T> | Typebox.TObject<T extends Record<string, Typebox.TSchema> ? T : never>
+
+  export type String = Standard<string, any> | Typebox.TString
+}
 /**
  * TypeBox's schema type, which does not carry its static type — so a `Schema<Output>`
  * built from one keeps `Output` while losing the concrete `TObject<{ ... }>`.
@@ -16,12 +23,20 @@ export type Output<T extends Type> =
  * type back has to re-assert it from the static type, which is what `TypedSchema<O>` in
  * `http/schema.ts` does.
  */
-type TSchema = TTypeboxSchema
+type TSchema = Typebox.TSchema
 
-export const toJson = (schema: Type): Json => {
+/** JSON Schema for a schema's `input` (what is sent) or `output` (what validation yields). */
+export const toJson = (schema: Type, io: 'input' | 'output' = 'input', target = 'draft-07'): Json => {
   if (!isStandard(schema)) return schema as Json
-  return schema['~standard'].jsonSchema.input({ target: 'draft-07' }) as Json
+  return schema['~standard'].jsonSchema[io]({ target }) as Json
 }
+
+/** True for a Standard JSON schema or a TypeBox schema. */
+export const is = (value: unknown): value is Type => isStandard(value) || KindGuard.IsSchema(value)
+
+/** Coerce string input toward a TypeBox schema, e.g. `'5'` for an integer. Other schemas get the value unchanged. */
+export const convert = (schema: Type, value: unknown): unknown =>
+  KindGuard.IsSchema(schema) ? Value.Convert(schema, value) : value
 
 export const validate = async <T = unknown>(input: T, schema?: Type): Promise<Result<T, Issue[]>> => {
   if (schema === undefined) return Result.ok(input)
@@ -34,7 +49,7 @@ export const validate = async <T = unknown>(input: T, schema?: Type): Promise<Re
   }
 
   if (KindGuard.IsSchema(schema)) {
-    const value = Value.Convert(schema, input)
+    const value = convert(schema, input)
     if (!Value.Check(schema, value)) return Result.err([...Value.Errors(schema, value)].map(typeboxIssue))
     return Result.ok(Value.Decode(schema as TSchema, value) as T)
   }
@@ -61,7 +76,7 @@ export interface Issue {
   message: string
 }
 
-interface Standard<I = unknown, O = I> extends StandardJSONSchemaV1<I, O> {
+export interface Standard<I = unknown, O = I> extends StandardJSONSchemaV1<I, O> {
   readonly '~standard': StandardJSONSchemaV1.Props<I, O> & Partial<StandardSchemaV1.Props<I, O>>
 }
 

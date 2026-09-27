@@ -10,15 +10,20 @@
   "license": "ISC",
   "type": "module",
   "exports": {
-    ".": "./src/core/index.ts",
+    ".": "./src/index.ts",
+    "./core": "./src/core/index.ts",
     "./cli": "./src/cli/index.ts",
     "./http": "./src/http/index.ts",
-    "./http/elysia": "./src/http/elysia.ts",
-    "./http/hono": "./src/http/hono.ts"
+    "./http/bun": "./src/http/adapter/bun.ts",
+    "./http/elysia": "./src/http/adapter/elysia.ts",
+    "./http/hono": "./src/http/adapter/hono.ts"
   },
   "dependencies": {
-    "@sinclair/typebox": "0.33.24",
-    "@standard-schema/spec": "^1.1.0"
+    "@scalar/types": "^0.22.1",
+    "@sinclair/typebox": "0.34.52",
+    "@standard-schema/spec": "^1.1.0",
+    "@types/bun": "^1.4.2",
+    "openapi-typescript": "7.13.0"
   },
   "peerDependencies": {
     "elysia": ">=1.4.0",
