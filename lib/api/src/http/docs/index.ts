@@ -9,7 +9,7 @@ export type { OpenApiConfig, NameContext } from './openapi/index.ts'
 export type { ScalarConfig } from './scalar/index.ts'
 
 /**
- * Build an OpenAPI 3.1 document from routes.
+ * Build an OpenAPI 3.2 document from routes.
  *
  * Object bodies and responses are hoisted into `components.schemas` and deduplicated by structure.
  *
@@ -44,7 +44,7 @@ export const Scalar = <P extends string>(prefix: P, docs: ScalarDocsConfig) => {
   const DocsSpec = {
     method: 'GET',
     path: `${prefix}/json`,
-    response: { 200: { 'application/json': Type.Object({}, { description: 'OpenAPI 3.1 document' }) } },
+    response: { 200: { 'application/json': Type.Object({}, { description: 'OpenAPI 3.2 document' }) } },
   } satisfies Http.RouteSpec
 
   const { scalar: config, embed, ...openapi } = docs

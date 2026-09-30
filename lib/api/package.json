@@ -39,6 +39,7 @@
   },
   "devDependencies": {
     "@elysiajs/eden": "^1.4.9",
+    "@hyperjump/json-schema": "^1.17.8",
     "@types/node": "^22.20.3",
     "elysia": "^1.4.30",
     "hono": "^4.13.8",

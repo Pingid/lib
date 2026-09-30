@@ -10,7 +10,7 @@ export interface OpenApiConfig extends Partial<oa.OpenAPI3>, RegistryOptions {
   routes: (Route.Route<any, any> | Route.RouteSpec)[]
   /** Named schemas emitted as components. Matching inline schemas resolve to them when `dedupe` is on. */
   models?: Record<string, Schema.Type>
-  /** Defaults to the spec's `operationId`, else method + path, e.g. `GET /users/:id` → `getUsersById`. */
+  /** Defaults to the spec's `operationId`, else method + path, e.g. `GET /users/:id` → `getUsersById`. Repeats get a numeric suffix. */
   operationId?: (spec: Route.RouteSpec) => string
   /** Component name for a hoisted body or response schema without its own `$id` or `title`. */
   name?: (ctx: NameContext) => string
@@ -24,7 +24,7 @@ export interface NameContext {
 }
 
 /**
- * Build an OpenAPI 3.1 document from routes.
+ * Build an OpenAPI 3.2 document from routes.
  *
  * Object bodies and responses are hoisted into `components.schemas` and deduplicated by structure.
  *
@@ -34,17 +34,19 @@ export interface NameContext {
 export const resolve = (config: OpenApiConfig): oa.OpenAPI3 => {
   const { routes, models = {}, refs, dedupe, operationId = operationIdOf, name = nameOf, ...doc } = config
   const reg = createRegistry({ refs, dedupe }, doc.components?.schemas as Record<string, Schema.Json>)
-  reg.models(Object.fromEntries(Object.entries(models).map(([n, s]) => [n, Schema.toJson(s)])))
+  reg.models(Object.fromEntries(Object.entries(models).map(([n, s]) => [n, toJson(s)])))
+  const ids = new Set<string>()
 
   const operation = (spec: Route.RouteSpec): oa.OperationObject => {
     const { method, path = '', body, query, params, response, ...meta } = spec
-    const id = operationId(spec)
+    const id = unique(ids, operationId(spec))
     const refer = (s: Schema.Type, ctx: Omit<NameContext, 'operationId'>) =>
-      reg.refer(Schema.toJson(s), name({ operationId: id, ...ctx }))
-    const parameters = [...parametersOf('path', params, pathNames(path)), ...parametersOf('query', query)].map((p) => ({
-      ...p,
-      schema: reg.refer(p.schema),
-    }))
+      reg.refer(toJson(s), name({ operationId: id, ...ctx }))
+    const [pathJson, queryJson] = [params, query].map((s) => (s ? toJson(s) : {})) as [Schema.Json, Schema.Json]
+    for (const json of [pathJson, queryJson]) reg.defines(json)
+    const parameters = [...parametersOf('path', pathJson, pathNames(path)), ...parametersOf('query', queryJson)].map(
+      (p) => ({ ...p, schema: reg.refer(p.schema) }),
+    )
     return defined({
       ...meta,
       operationId: id,
@@ -55,11 +57,13 @@ export const resolve = (config: OpenApiConfig): oa.OpenAPI3 => {
           const entries = Object.entries(protocols ?? {}) as [string, any][]
           const content = entries.map(([type, v]) => [
             type,
-            Schema.is(v)
-              ? { schema: refer(v, { role: 'response', status, type }) }
-              : type === 'application/octet-stream'
+            !Schema.is(v)
+              ? type === 'application/octet-stream'
                 ? { schema: BINARY }
-                : {},
+                : {}
+              : type === 'text/event-stream'
+                ? { itemSchema: event(refer(v, { role: 'response', status, type })) }
+                : { schema: refer(v, { role: 'response', status, type }) },
           ])
           return [
             status,
@@ -83,7 +87,7 @@ export const resolve = (config: OpenApiConfig): oa.OpenAPI3 => {
 
   const schemas = reg.schemas as Record<string, oa.SchemaObject>
   return {
-    openapi: '3.1.0',
+    openapi: '3.2.0',
     info: { title: 'API', version: '1.0.0' },
     ...doc,
     paths,
@@ -106,7 +110,7 @@ const nameOf = ({ operationId, role, status = '200', type = 'application/json' }
   pascal(operationId) +
   (role === 'body'
     ? 'Body'
-    : `${status === '200' ? '' : status}${type === 'application/json' ? '' : pascal(type.split('/')[1] ?? '')}Response`)
+    : `${status === '200' ? '' : pascal(status)}${type === 'application/json' ? '' : pascal(type.split('/')[1] ?? '')}Response`)
 
 const STATUS: Record<string, string> = {
   200: 'OK',
@@ -126,7 +130,25 @@ const STATUS: Record<string, string> = {
 // Helpers
 // ------------------------------------------------------------------
 const PARAM = /^(?::\w+|\{\w+\})$/
-const BINARY = { type: 'string', format: 'binary' } as const
+const BINARY = { type: 'string', contentMediaType: 'application/octet-stream' } as const
+
+/** JSON Schema in the dialect OpenAPI 3.2 uses. */
+const toJson = (schema: Schema.Type) => Schema.toJson(schema, 'input', 'draft-2020-12')
+
+/** `id`, or `id` with the first free numeric suffix once `taken` holds it. Claims the result. */
+const unique = (taken: Set<string>, id: string) => {
+  let out = id
+  for (let i = 2; taken.has(out); i++) out = `${id}${i}`
+  taken.add(out)
+  return out
+}
+
+/** One server-sent event: `data` holds the JSON the route streams. */
+const event = (schema: Schema.Json) => ({
+  type: 'object',
+  required: ['data'],
+  properties: { data: { type: 'string', contentMediaType: 'application/json', contentSchema: schema } },
+})
 
 /** A request body's content by media type: its JSON schema, and bytes when it declares octet-stream. */
 const requestContent = (
@@ -147,11 +169,14 @@ const pathNames = (path: string) =>
     .filter((s) => PARAM.test(s))
     .map((s) => s.replace(/[:{}]/g, ''))
 
-/** Expand an object schema into parameters. Path names without a schema default to strings. */
-const parametersOf = (loc: 'path' | 'query', schema?: Schema.Type, names: string[] = []) => {
-  const json = schema ? Schema.toJson(schema) : {}
+/**
+ * Expand an object schema into parameters. Path names without a schema default to strings, and path
+ * parameters the path does not name are left out.
+ */
+const parametersOf = (loc: 'path' | 'query', json: Schema.Json, names: string[] = []) => {
   const props = { ...Object.fromEntries(names.map((n) => [n, { type: 'string' }])), ...json.properties }
-  return Object.entries(props).map(([name, s]: [string, Schema.Json]) =>
+  const entries = Object.entries(props).filter(([name]) => loc === 'query' || names.includes(name))
+  return entries.map(([name, s]: [string, Schema.Json]) =>
     defined({
       name,
       in: loc,

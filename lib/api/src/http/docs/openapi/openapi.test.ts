@@ -26,6 +26,8 @@ const createItem = {
   response: Item,
 } satisfies Route.RouteSpec
 
+const BINARY = { type: 'string', contentMediaType: 'application/octet-stream' }
+
 const build = (config: OpenApiConfig) =>
   document(config) as Omit<oa.OpenAPI3, 'paths'> & { paths: Record<string, Record<string, oa.OperationObject>> }
 
@@ -34,7 +36,7 @@ const doc = (config: Partial<OpenApiConfig> = {}) => build({ routes: [getItem, c
 describe('openapi', () => {
   it('fills document defaults and converts path syntax', () => {
     const d = doc()
-    expect(d.openapi).toBe('3.1.0')
+    expect(d.openapi).toBe('3.2.0')
     expect(d.info).toEqual({ title: 'API', version: '1.0.0' })
     expect(Object.keys(d.paths!)).toEqual(['/items/{id}', '/items'])
   })
@@ -170,6 +172,34 @@ describe('openapi', () => {
     expect(Object.keys(doc({ dedupe: false }).components!.schemas!)).toContain('PostItemsResponse')
   })
 
+  it('keeps operation ids unique', () => {
+    const d = build({ routes: [{ path: '/a-b' }, { path: '/aB' }, { path: '/x', operationId: 'getAB' }] })
+    expect(
+      [d.paths['/a-b']!['get']!, d.paths['/aB']!['get']!, d.paths['/x']!['get']!].map((o) => o.operationId),
+    ).toEqual(['getAB', 'getAB2', 'getAB3'])
+  })
+
+  it('leaves out path parameters the path does not name', () => {
+    const d = build({ routes: [{ path: '/a/:id', params: Type.Object({ id: Type.String(), other: Type.String() }) }] })
+    expect(d.paths['/a/{id}']!['get']!.parameters).toEqual([
+      { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+    ])
+  })
+
+  it('hoists definitions a parameter schema refers to', () => {
+    const M = z.object({ id: z.string() }).meta({ id: 'M' })
+    const d = build({ routes: [{ path: '/q', query: z.object({ m: M.optional() }) }] })
+    expect(d.paths['/q']!['get']!.parameters).toEqual([
+      { name: 'm', in: 'query', required: false, schema: { $ref: '#/components/schemas/M' } },
+    ])
+    expect(d.components!.schemas!['M']).toMatchObject({ type: 'object' })
+  })
+
+  it('names default responses in pascal case', () => {
+    const d = build({ routes: [{ path: '/d', response: { default: { 'application/json': Item } } as any }] })
+    expect(Object.keys(d.components!.schemas!)).toEqual(['GetDDefaultResponse'])
+  })
+
   it('accepts naming, operation id and document overrides', () => {
     const d = doc({
       info: { title: 'Items', version: '2.0.0' },
@@ -183,13 +213,13 @@ describe('openapi', () => {
 })
 
 describe('openapi binary responses', () => {
-  it('documents application/octet-stream as a binary string', () => {
+  it('documents application/octet-stream as a string of that media type', () => {
     const d = build({
       routes: [{ path: '/files/:id', response: { 200: { 'application/octet-stream': { description: 'The file' } } } }],
     })
     expect(d.paths['/files/{id}']!['get']!.responses![200]).toEqual({
       description: 'The file',
-      content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } },
+      content: { 'application/octet-stream': { schema: BINARY } },
     })
   })
 })
@@ -209,8 +239,107 @@ describe('openapi binary request bodies', () => {
       required: true,
       content: {
         'application/json': { schema: { $ref: '#/components/schemas/PostFilesBody' } },
-        'application/octet-stream': { schema: { type: 'string', format: 'binary' } },
+        'application/octet-stream': { schema: BINARY },
       },
+    })
+  })
+})
+
+describe('openapi event streams', () => {
+  it('describes each event with itemSchema, its data holding the JSON streamed', () => {
+    const d = build({ routes: [{ path: '/events', response: { 200: { 'text/event-stream': Item } } }] })
+    expect((d.paths['/events']!['get']!.responses![200] as any).content).toEqual({
+      'text/event-stream': {
+        itemSchema: {
+          type: 'object',
+          required: ['data'],
+          properties: {
+            data: {
+              type: 'string',
+              contentMediaType: 'application/json',
+              contentSchema: { $ref: '#/components/schemas/GetEventsEventStreamResponse' },
+            },
+          },
+        },
+      },
+    })
+  })
+})
+
+describe('openapi recursive schemas', () => {
+  const Tree: any = z.object({
+    id: z.string(),
+    get kids() {
+      return z.array(Tree)
+    },
+  })
+
+  it('points a recursive model and its nested uses at one component', () => {
+    const d = build({ models: { Tree }, routes: [{ path: '/t', response: z.object({ tree: Tree }) }] })
+    const s = d.components!.schemas!
+    expect(Object.keys(s)).toEqual(['Tree', 'GetTResponse'])
+    expect((s['Tree'] as any).properties.kids.items).toEqual({ $ref: '#/components/schemas/Tree' })
+    expect((s['GetTResponse'] as any).properties.tree).toEqual({ $ref: '#/components/schemas/Tree' })
+  })
+
+  it('hoists a recursive schema so its root refs have a component, even when refs is off', () => {
+    const d = build({ refs: false, routes: [{ path: '/t', response: Tree }] })
+    expect((d.paths['/t']!['get']!.responses![200] as any).content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/GetTResponse',
+    })
+    expect((d.components!.schemas!['GetTResponse'] as any).properties.kids.items).toEqual({
+      $ref: '#/components/schemas/GetTResponse',
+    })
+  })
+
+  it('hoists a TypeBox recursive schema when refs is off', () => {
+    const Node = Type.Recursive((This) => Type.Object({ next: Type.Optional(This) }), { $id: 'node' })
+    const d = build({ refs: false, routes: [{ path: '/n', response: Type.Object({ head: Node }) }] })
+    const schema = (d.paths['/n']!['get']!.responses![200] as any).content['application/json'].schema
+    expect(schema.properties.head).toEqual({ $ref: '#/components/schemas/Node' })
+    expect(d.components!.schemas!['Node']).toEqual({
+      type: 'object',
+      properties: { next: { $ref: '#/components/schemas/Node' } },
+    })
+  })
+})
+
+describe('openapi schema dialect', () => {
+  it('writes tuples with prefixItems', () => {
+    const d = build({
+      refs: false,
+      routes: [{ path: '/t', response: Type.Object({ a: Type.Tuple([Type.String()]) }) }],
+    })
+    const { a } = (d.paths['/t']!['get']!.responses![200] as any).content['application/json'].schema.properties
+    expect(a).toEqual({ type: 'array', prefixItems: [{ type: 'string' }], items: false, minItems: 1, maxItems: 1 })
+  })
+
+  it('writes open additionalProperties as true', () => {
+    const d = build({
+      refs: false,
+      routes: [{ path: '/m', response: z.object({ map: z.record(z.string(), z.unknown()) }) }],
+    })
+    const { map } = (d.paths['/m']!['get']!.responses![200] as any).content['application/json'].schema.properties
+    expect(map).toEqual({ type: 'object', propertyNames: { type: 'string' }, additionalProperties: true })
+  })
+
+  it('writes TypeBox JavaScript types as the JSON they serialise to', () => {
+    const response = Type.Object({
+      date: Type.Date({ description: 'When' }),
+      big: Type.BigInt(),
+      bytes: Type.Uint8Array(),
+      re: Type.RegExp(/^a+$/),
+      gone: Type.Optional(Type.Undefined()),
+      fn: Type.Function([], Type.String()),
+    })
+    const d = build({ refs: false, routes: [{ path: '/j', response }] })
+    expect((d.paths['/j']!['get']!.responses![200] as any).content['application/json'].schema.properties).toEqual({
+      date: { type: 'string', format: 'date-time', description: 'When' },
+      big: { type: 'integer' },
+      bytes: BINARY,
+      re: { type: 'string', pattern: '^a+$' },
+      gone: { not: {} },
+      fn: {},
     })
   })
 })
