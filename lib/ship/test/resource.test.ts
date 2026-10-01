@@ -1,6 +1,6 @@
 import { expect, expectTypeOf, test } from 'vitest'
 
-import { Ship } from '../src/v2/index.ts'
+import { Ship } from '../src/index.ts'
 
 test('a compose file resolves in canonical group order', async () => {
   const data = Ship.Volume('data', () => ({}))

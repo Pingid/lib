@@ -9,12 +9,11 @@
     "generate": "tsx script/types.ts"
   },
   "bin": {
-    "ship": "./cli/cli.ts"
+    "ship": "./cli/index.ts"
   },
   "exports": {
     ".": "./src/index.ts",
-    "./config": "./src/config.ts",
-    "./v2": "./src/v2/index.ts"
+    "./config": "./src/config/index.ts"
   },
   "keywords": [],
   "author": "",

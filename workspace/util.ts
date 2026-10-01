@@ -61,7 +61,8 @@ const exported = async ({ name, path: dir }: { name: string; path: string }) => 
   const out: Entry[] = []
   for (const [sub, target] of Object.entries(exports)) {
     if (!sub.includes('*')) out.push(entry(under(sub), root(dir, target)))
-    else for (const [star, file] of await expand(root(dir), target)) out.push(entry(under(sub.replace('*', star)), file))
+    else
+      for (const [star, file] of await expand(root(dir), target)) out.push(entry(under(sub.replace('*', star)), file))
   }
   return out
 }

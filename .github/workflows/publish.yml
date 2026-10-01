@@ -77,7 +77,6 @@ jobs:
   #           '//registry.npmjs.org/:_authToken=${NPM_TOKEN}' \
   #           '//npm.pkg.github.com/:_authToken=${GITHUB_PACKAGES_TOKEN}' > ~/.npmrc
 
- 
   #     - name: publish to GitHub Packages
   #       if: ${{ !cancelled() }}
   #       run: npm publish ./pkg --tag ${{ steps.version.outputs.dist_tag }} --@pingid:registry=https://npm.pkg.github.com

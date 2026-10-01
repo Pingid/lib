@@ -77,7 +77,9 @@ attached per command — and this is the only route for args that came from a sc
 `.in()` and `c.cmd()` build their args from JSON Schema:
 
 ```ts
-Cmd.build('deploy').in(Input).complete({ env: ['dev', 'prod'], config: 'file' })
+Cmd.build('deploy')
+  .in(Input)
+  .complete({ env: ['dev', 'prod'], config: 'file' })
 ```
 
 An override on the declaring command wins, so a global option's source can be set once at
@@ -144,7 +146,7 @@ TS API, which takes `readonly string[]`.
 
 ## Limits
 
-Short-cluster *continuation* (`-w` → `-wv`, `-wc`) is not offered, and `--no-<bool>` is kept
+Short-cluster _continuation_ (`-w` → `-wv`, `-wc`) is not offered, and `--no-<bool>` is kept
 out of the flag list until the word starts with `--no` — both would roughly double a list
 for a form nobody tab-completes.
 

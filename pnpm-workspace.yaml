@@ -8,4 +8,5 @@ overrides:
   '@pingid/lib-api': link:lib/api
   '@pingid/lib-compose': link:lib/ship
   '@pingid/lib-workspace': link:lib/workspace
+  '@pingid/lib-published': 'github:Pingid/lib#build-75'
   '@sinclair/typebox': 0.34.52

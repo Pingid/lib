@@ -73,7 +73,11 @@ const api = Router({
 
 const call = (path: string, init?: RequestInit) => (api.fetch as any)(new Request(`http://localhost${path}`, init))
 const put = (path: string, headers: Record<string, string> = { 'x-user': 'dan' }) =>
-  call(path, { method: 'PUT', body: JSON.stringify({ id: 'x' }), headers: { 'content-type': 'application/json', ...headers } })
+  call(path, {
+    method: 'PUT',
+    body: JSON.stringify({ id: 'x' }),
+    headers: { 'content-type': 'application/json', ...headers },
+  })
 
 describe('Router', () => {
   it('matches static and dynamic paths under a prefix', async () => {
@@ -118,7 +122,11 @@ describe('Router', () => {
   it('swaps providers with override', async () => {
     const test = Router({ override: [Route.override(user, () => ({ id: 'fake' }))], routes: [Update] })
     const res = await test.fetch(
-      new Request('http://localhost/apps/ab', { method: 'PUT', body: '{"id":"x"}', headers: { 'content-type': 'application/json' } }),
+      new Request('http://localhost/apps/ab', {
+        method: 'PUT',
+        body: '{"id":"x"}',
+        headers: { 'content-type': 'application/json' },
+      }),
     )
     expect(await res.json()).toEqual({ id: 'ab', by: 'fake' })
   })

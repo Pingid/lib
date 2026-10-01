@@ -92,9 +92,7 @@ type NeedsOf<T> = T extends Router<infer N> ? N : T extends Route.Route<any, inf
  * Bun.serve({ fetch: api.fetch })
  */
 export const Router: {
-  <const R extends readonly Node[]>(
-    options: RouterOptions<R> & { context: (req: Request) => P<Needs<R>> },
-  ): Router<{}>
+  <const R extends readonly Node[]>(options: RouterOptions<R> & { context: (req: Request) => P<Needs<R>> }): Router<{}>
   <const R extends readonly Node[]>(options: RouterOptions<R>): Router<Needs<R>>
 } = (options: Router['options']): Router<any> => {
   let compiled: Fetch | undefined
