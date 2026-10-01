@@ -1,31 +1,3 @@
-/*--------------------------------------------------------------------------
-
-@pingid/lib-wire/adapters
-
-The MIT License (MIT)
-
-Copyright (c) 2026 Dan Beaven <dm.beaven@gmail.com>
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-
----------------------------------------------------------------------------*/
-
 import type { Meta } from '../hub/index.ts'
 import { TransportNode, type TransportHost } from '../node/transport.ts'
 import { source, type Source } from './source.ts'
@@ -33,6 +5,7 @@ import { source, type Source } from './source.ts'
 // ------------------------------------------------------------------
 // Socket
 // ------------------------------------------------------------------
+
 /** Enough of a socket to send on and hang up */
 export interface Socket {
   send(data: never): unknown
@@ -42,6 +15,7 @@ export interface Socket {
 // ------------------------------------------------------------------
 // SocketsOptions
 // ------------------------------------------------------------------
+
 /** Defaults to JSON text frames */
 export interface SocketsOptions<S, T, M extends Meta = Meta> {
   encode?: ((msg: T) => unknown) | undefined
@@ -53,11 +27,13 @@ export interface SocketsOptions<S, T, M extends Meta = Meta> {
 // ------------------------------------------------------------------
 // SocketEvent
 // ------------------------------------------------------------------
+
 type SocketEvent<S> = { kind: 'open'; socket: S; meta: Meta | undefined } | { kind: 'message'; socket: S; data: unknown } | { kind: 'close'; socket: S } | { kind: 'error'; socket: S; err: unknown }
 
 // ------------------------------------------------------------------
 // Sockets
 // ------------------------------------------------------------------
+
 /**
  * One Source for every server whose socket API is a handful of callbacks: ws, Bun, Deno, a
  * plain TCP server. Events are relayed rather than offered directly, so a socket connecting
@@ -105,9 +81,11 @@ export class Sockets<S extends Socket, T, M extends Meta = Meta> {
       return () => void this.#sinks.delete(fn)
     }, options)
   }
+
   // ----------------------------------------------------------------
   // Events
   // ----------------------------------------------------------------
+
   /** A socket connected */
   public open(socket: S, meta?: M): void {
     this.#emit({ kind: 'open', socket, meta })
@@ -124,16 +102,20 @@ export class Sockets<S extends Socket, T, M extends Meta = Meta> {
   public error(socket: S, err: unknown): void {
     this.#emit({ kind: 'error', socket, err })
   }
+
   // ----------------------------------------------------------------
   // Source
   // ----------------------------------------------------------------
+
   /** The Source that turns these events into peers */
   public get source(): Source<T> {
     return this.#source
   }
+
   // ----------------------------------------------------------------
   // Internal
   // ----------------------------------------------------------------
+
   #node(socket: S, hosts: WeakMap<Socket, TransportHost<T>>) {
     return new TransportNode<T>(
       (host) => {

@@ -1,5 +1,5 @@
-import { CliError } from './error.ts'
 import { tokenize, type Token } from './token.ts'
+import { CliError } from './error.ts'
 import type { Arg } from '../arg.ts'
 import type { Cmd } from '../cmd.ts'
 

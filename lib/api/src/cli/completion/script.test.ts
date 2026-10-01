@@ -1,14 +1,14 @@
-import { execFileSync } from 'node:child_process'
 import { chmodSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { describe, expect, test } from 'vitest'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, test } from 'vitest'
 
+import { command, script, type Completion } from './index.ts'
+import { Sink } from '../core/render.ts'
 import { Arg } from '../arg.ts'
 import { Cli } from '../cli.ts'
 import { Cmd } from '../cmd.ts'
-import { Sink } from '../core/render.ts'
-import { command, script, type Completion } from './index.ts'
 
 const tree = (): Cmd.Node =>
   Cmd.build('app')

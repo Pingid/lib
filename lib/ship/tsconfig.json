@@ -1,6 +1,6 @@
 {
   "extends": "../../workspace/tsconfig/tsconfig.base.json",
-  // "compilerOptions": { "types": ["node"] },
+  "compilerOptions": { "types": ["node"] },
   "include": ["src"],
   "exclude": ["cli"]
 }

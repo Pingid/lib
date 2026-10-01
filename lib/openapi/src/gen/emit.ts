@@ -1,6 +1,5 @@
 import ts from 'typescript'
 
-import * as Ast from './ast.ts'
 import {
   Media,
   Name,
@@ -14,6 +13,7 @@ import {
   type Param,
   type Reply,
 } from './model.ts'
+import * as Ast from './ast.ts'
 
 /** How the routes are laid out. Shared by `Emit.routes` and `PrintOptions`. */
 export type Shape = {

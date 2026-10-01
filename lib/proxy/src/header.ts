@@ -1,7 +1,7 @@
-import { matchesAny, type PatternArg } from './util.ts'
 import { CookieSet, SetCookie, type SetCookiePolicy } from './cookie.ts'
-import { compose, BasePolicy } from './base.ts'
+import { matchesAny, type PatternArg } from './util.ts'
 import type { ProxyContext } from './context.ts'
+import { compose, BasePolicy } from './base.ts'
 
 export const HEADER_TYPE = {
   /** Connection-scoped, never forwarded. RFC 9110 §7.6.1. */

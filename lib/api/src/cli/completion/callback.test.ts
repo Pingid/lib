@@ -1,11 +1,11 @@
 import { execFileSync } from 'node:child_process'
 import { describe, expect, test } from 'vitest'
 
+import { MARKER, callback } from './callback.ts'
+import { Sink } from '../core/render.ts'
 import { Arg } from '../arg.ts'
 import { Cli } from '../cli.ts'
 import { Cmd } from '../cmd.ts'
-import { Sink } from '../core/render.ts'
-import { MARKER, callback } from './callback.ts'
 
 const tree = (): Cmd.Node =>
   Cmd.build('app')

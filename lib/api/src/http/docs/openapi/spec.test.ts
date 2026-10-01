@@ -1,11 +1,11 @@
-import { Type } from '@sinclair/typebox'
-import { BASIC } from '@hyperjump/json-schema/experimental'
 import { validate } from '@hyperjump/json-schema/openapi-3-2'
-import { z } from 'zod'
+import { BASIC } from '@hyperjump/json-schema/experimental'
 import { describe, expect, it } from 'vitest'
+import { Type } from '@sinclair/typebox'
+import { z } from 'zod'
 
-import * as Route from '../../route/index.ts'
 import { resolve, type OpenApiConfig } from './index.ts'
+import * as Route from '../../route/index.ts'
 
 // ------------------------------------------------------------------
 // Fixtures

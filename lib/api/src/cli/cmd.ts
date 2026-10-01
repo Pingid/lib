@@ -1,12 +1,12 @@
-import { Schema } from '../core/index.ts'
 import type { Static, TObject } from '@sinclair/typebox/type'
+import { Schema } from '../core/index.ts'
 
-import { Arg, kebab } from './arg.ts'
-import { CliError } from './core/error.ts'
-import { Help } from './core/help.ts'
-import { Parse } from './core/parse.ts'
-import type { Render } from './core/render.ts'
 import type { Compute, Struct } from './core/util.ts'
+import type { Render } from './core/render.ts'
+import { CliError } from './core/error.ts'
+import { Parse } from './core/parse.ts'
+import { Arg, kebab } from './arg.ts'
+import { Help } from './core/help.ts'
 
 export declare namespace Cmd {
   type Node = Cmd<any, any, any, any>

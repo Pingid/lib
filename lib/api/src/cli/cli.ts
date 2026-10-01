@@ -1,9 +1,9 @@
+import { MARKER, callback } from './completion/callback.ts'
 import type { Compute, Struct } from './core/util.ts'
 import { CliError } from './core/error.ts'
 import { Render } from './core/render.ts'
 import { Parse } from './core/parse.ts'
 import { Help } from './core/help.ts'
-import { MARKER, callback } from './completion/callback.ts'
 import { Cmd } from './cmd.ts'
 
 export declare namespace Cli {

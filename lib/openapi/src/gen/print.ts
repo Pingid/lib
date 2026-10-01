@@ -1,8 +1,8 @@
 import type ts from 'typescript'
 
-import * as Ast from './ast.ts'
 import { Emit, bind, type Shape } from './emit.ts'
 import type { Api } from './model.ts'
+import * as Ast from './ast.ts'
 
 export type PrintOptions = Shape & {
   /** Text placed above the output. */

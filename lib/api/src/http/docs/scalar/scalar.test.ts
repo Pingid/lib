@@ -1,5 +1,5 @@
-import { Type } from '@sinclair/typebox'
 import { describe, expect, it } from 'vitest'
+import { Type } from '@sinclair/typebox'
 
 import * as Route from '../../route/index.ts'
 import { Scalar } from '../index.ts'

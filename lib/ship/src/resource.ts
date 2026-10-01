@@ -1,8 +1,7 @@
-import type { Context, ContextValue } from './context.ts'
 import type * as D from './types.d.ts'
-import { branded } from './brand.ts'
 
-export interface Definitions {
+/** The compose definition each resource kind produces. */
+export interface Def {
   service: D.DefinitionsService
   network: D.DefinitionsNetwork
   volume: D.DefinitionsVolume
@@ -10,149 +9,170 @@ export interface Definitions {
   config: D.DefinitionsConfig
 }
 
-export type ResourceType = keyof Definitions
+export type Kind = keyof Def
 
-/** Resource types that carry a `name` field and can therefore be shared across stacks. */
-export type ShareableType = Exclude<ResourceType, 'service'>
+/** Compose's own top-level order, so generated files read like hand-written ones. */
+const KINDS = ['service', 'network', 'volume', 'secret', 'config'] as const satisfies readonly Kind[]
 
-export const RESOURCE_TYPES = [
-  'service',
-  'network',
-  'volume',
-  'secret',
-  'config',
-] as const satisfies readonly ResourceType[]
+/** Brands are `Symbol.for` keys so a second copy of this module (jiti, bundlers) still agrees. */
+const RESOURCE: unique symbol = Symbol.for('@pingid/lib/ship:Resource')
+const COMPOSE: unique symbol = Symbol.for('@pingid/lib/ship:Compose')
 
-export type AnyResource = Resource<ResourceType, any, any, any>
+/** Type-only: carries a compose file's context requirement. Nothing sets it at runtime. */
+declare const CONTEXT: unique symbol
 
-/** Anything `compose()` or `stack()` accepts. */
-export type Item = ContextValue<any> | AnyResource
+// ---------------- resource --------------------------
 
 /**
- * Structural view of a `Stack`, declared here so `Ctx` can reference one without
- * `resource.ts` importing `stack.ts`.
- */
-export interface StackRef {
-  readonly name: string
-  readonly items: readonly Item[]
-}
-
-export interface Use {
-  <T>(ref: Context<T>): T
-  <T extends ResourceType, N extends string, O>(ref: Resource<T, N, O, any>): O
-}
-
-export interface Ref {
-  <T extends ShareableType, N extends string>(stack: StackRef, ref: Resource<T, N, any, any>): { name: N }
-}
-
-export interface Ctx<N extends string, O> {
-  /** This resource's key — its DNS name for services, its map key otherwise. */
-  readonly name: N
-  /** This resource's own out handle, for self-reference. */
-  readonly out: O
-  /** Pull in a context value, or a resource in this same stack (registering it if needed). */
-  readonly use: Use
-  /** Reference a `.shared()` resource belonging to another stack; emits an `external` stub here. */
-  readonly ref: Ref
-}
-
-export type Init<S, C> = (c: C) => S | Promise<S>
-
-const RESOURCE: unique symbol = Symbol.for('@pingid/lib-compose:Resource')
-
-/**
- * A single compose resource.
+ * One compose resource: a key, and a function from the context it needs to its definition.
  *
- * Builder methods are pure — each returns a new `Resource`. The object you pass to
- * `compose()` / `stack()` / `use()` is the identity used for deduplication, so always
- * pass the end of the chain.
+ * `def` is a method so it is bivariant: a resource needing `{ image: string }` is still a
+ * `Resource`, and the context it needs can still be inferred from it.
  */
-export class Resource<T extends ResourceType, N extends string, O = { name: N }, S = undefined> {
-  /** @see {@link branded} */
-  readonly [RESOURCE] = true
-  static [Symbol.hasInstance] = branded(RESOURCE)
+export interface Resource<
+  K extends Kind = Kind,
+  N extends string = string,
+  S extends Def[K] = Def[K],
+  C extends Record<string, unknown> = Record<string, unknown>,
+> {
+  readonly [RESOURCE]: true
+  readonly type: K
+  readonly name: N
+  def(cx: C, name: N): S | Promise<S>
+}
 
-  static service<const N extends string>(name: N): Resource<'service', N> {
-    return new Resource('service', name)
-  }
-  static network<const N extends string>(name: N): Resource<'network', N> {
-    return new Resource('network', name)
-  }
-  static volume<const N extends string>(name: N): Resource<'volume', N> {
-    return new Resource('volume', name)
-  }
-  static secret<const N extends string>(name: N): Resource<'secret', N> {
-    return new Resource('secret', name)
-  }
-  static config<const N extends string>(name: N): Resource<'config', N> {
-    return new Resource('config', name)
+const isResource = (value: unknown): value is Resource =>
+  typeof value === 'object' && value !== null && RESOURCE in value
+
+const factory =
+  <K extends Kind>(type: K) =>
+  <const N extends string, C extends Record<string, unknown> = {}, S extends Def[K] = Def[K]>(
+    name: N,
+    def: (cx: C, name: N) => S | Promise<S>,
+  ): Resource<K, N, S, C> =>
+    Object.freeze({ [RESOURCE]: true as const, type, name, def })
+
+export const Service = factory('service')
+export type Service<
+  N extends string = string,
+  S extends Def['service'] = Def['service'],
+  C extends Record<string, unknown> = Record<string, unknown>,
+> = Resource<'service', N, S, C>
+
+export const Network = factory('network')
+export type Network<
+  N extends string = string,
+  S extends Def['network'] = Def['network'],
+  C extends Record<string, unknown> = Record<string, unknown>,
+> = Resource<'network', N, S, C>
+
+export const Volume = factory('volume')
+export type Volume<
+  N extends string = string,
+  S extends Def['volume'] = Def['volume'],
+  C extends Record<string, unknown> = Record<string, unknown>,
+> = Resource<'volume', N, S, C>
+
+export const Secret = factory('secret')
+export type Secret<
+  N extends string = string,
+  S extends Def['secret'] = Def['secret'],
+  C extends Record<string, unknown> = Record<string, unknown>,
+> = Resource<'secret', N, S, C>
+
+export const Config = factory('config')
+export type Config<
+  N extends string = string,
+  S extends Def['config'] = Def['config'],
+  C extends Record<string, unknown> = Record<string, unknown>,
+> = Resource<'config', N, S, C>
+
+// ---------------- compose --------------------------
+
+/** Anything a compose file lists: a resource, or another compose file to include whole. */
+export type Item = Resource<Kind, any, any, any> | Compose<any, any, any>
+
+/** The resources an item contributes. */
+type Local<I> = I extends Compose<infer R, any, any> ? R : I extends Resource<any, any, any, any> ? I : never
+
+/** Keyed by name when the resources are known; any name when this is just `Compose`. */
+type Group<R extends Resource, K extends Kind> = Resource extends R
+  ? { readonly [name: string]: Resource<K> }
+  : { readonly [P in Extract<R, { type: K }> as P['name']]: P }
+
+type Groups<R extends Resource> = { readonly [K in Kind as `${K}s`]: Group<R, K> }
+
+/** A compose file: its project name, its resources, and those resources grouped by kind. */
+export type Compose<R extends Resource = Resource, N extends string = string, C = {}> = Groups<R> & {
+  readonly [COMPOSE]: true
+  readonly name: N
+  /** Every resource, with included compose files flattened in. */
+  readonly items: readonly Resource[]
+  /** A method, like `Resource.def`, so a compose file needing context is still a `Compose`. */
+  [CONTEXT]?(cx: C): void
+}
+
+const isCompose = (value: unknown): value is Compose => typeof value === 'object' && value !== null && COMPOSE in value
+
+type ContextOf<I> = I extends Item
+  ? I extends Resource<any, any, any, infer C>
+    ? C
+    : I extends Compose<any, any, infer C>
+      ? C
+      : never
+  : never
+
+type Cx<I> = Compute<Intersect<ContextOf<I>>>
+export const Compose = <const N extends string, const I extends readonly Item[]>(
+  name: N,
+  items: I,
+): Compose<Local<I[number]>, N, Cx<I[number]>> => {
+  const flat: Resource[] = []
+  const groups: Record<string, Record<string, Resource>> = Object.fromEntries(KINDS.map((k) => [`${k}s`, {}]))
+
+  for (const r of items.flatMap((item): readonly unknown[] => (isCompose(item) ? item.items : [item]))) {
+    if (!isResource(r)) throw new TypeError(`${name}: expected a Resource or Compose, got ${typeof r}`)
+    const group = groups[`${r.type}s`]!
+    // The same resource listed twice is one entry; two resources on one key is a mistake.
+    if (group[r.name] === r) continue
+    if (group[r.name]) throw new Error(`${name}: two different resources are both ${r.type}.${r.name}`)
+    group[r.name] = r
+    flat.push(r)
   }
 
-  readonly type: T
+  return Object.freeze({ [COMPOSE]: true, name, items: flat, ...groups }) as unknown as Compose<
+    Local<I[number]>,
+    N,
+    Cx<I[number]>
+  >
+}
 
-  protected _name: N
-  protected _out: O
-  protected _spec: Init<unknown, Ctx<N, O>>
-  protected _shared: string | undefined
+// ---------------- resolve --------------------------
 
-  constructor(type: T, name: N) {
-    this.type = type
-    this._name = name
-    this._out = {} as O
-    this._spec = () => ({})
-    this._shared = undefined
+type Intersect<U> = (U extends any ? (k: U) => void : never) extends (k: infer I) => void ? I : never
+type Compute<T> = { [K in keyof T]: T[K] } & {}
+/** A compose file. `name` is the project name, which the generated types predate. */
+export type Spec = D.ComposeSpecification & { name: string }
+
+/** Evaluate every definition into a plain compose file — `JSON.stringify` it and it is valid YAML. */
+export const Resolve = async <C>(compose: Compose<any, any, C>, cx: C): Promise<Spec> => {
+  const values = await Promise.all(
+    compose.items.map(async (r) => {
+      try {
+        return await r.def(cx as Record<string, unknown>, r.name)
+      } catch (cause) {
+        throw new Error(
+          `${compose.name}: ${r.type}.${r.name}: ${cause instanceof Error ? cause.message : String(cause)}`,
+          { cause },
+        )
+      }
+    }),
+  )
+
+  const groups: Record<string, unknown> = {}
+  for (const kind of KINDS) {
+    const entries = compose.items.flatMap((r, i) => (r.type === kind ? [[r.name, values[i]] as const] : []))
+    if (entries.length > 0) groups[`${kind}s`] = Object.fromEntries(entries)
   }
-
-  /** @internal */
-  static meta(r: AnyResource): {
-    type: ResourceType
-    name: string
-    spec: Init<unknown, Ctx<string, any>>
-    shared: string | undefined
-  } {
-    return { type: r.type, name: r._name, spec: r._spec, shared: r._shared }
-  }
-
-  /** @internal The value `use()` hands back: the declared out, plus the resource key. */
-  static handle(r: AnyResource): Record<string, unknown> {
-    return { ...(r._out as Record<string, unknown>), name: r._name }
-  }
-
-  protected derive(patch: { out?: unknown; spec?: unknown; shared?: string }): any {
-    const next = new Resource(this.type, this._name)
-    next._out = (patch.out ?? this._out) as any
-    next._spec = (patch.spec ?? this._spec) as Init<unknown, Ctx<any, any>>
-    next._shared = patch.shared ?? this._shared
-    return next
-  }
-
-  /** Define the resource body. Call `.out()` first if the body needs to read its own handle. */
-  spec<S2 extends Definitions[T]>(spec: Init<S2, Ctx<N, O>>): Resource<T, N, O, S2> {
-    return this.derive({ spec })
-  }
-
-  /** Declare extra fields other resources see through `use()`. Always includes `name`. */
-  out<const O2 extends Record<string, unknown>>(out: O2): Resource<T, N, O2 & { name: N }, S> {
-    return this.derive({ out })
-  }
-
-  /** Layer an override on top of the existing body — environment overlays without forking. */
-  patch(f: (def: S, c: Ctx<N, O>) => S | Promise<S>): Resource<T, N, O, S> {
-    const prev = this._spec
-    return this.derive({ spec: async (c: Ctx<N, O>) => f((await prev(c)) as S, c) })
-  }
-
-  /**
-   * Pin this resource's docker object name so other stacks can reference it.
-   *
-   * Compose prefixes the project name onto network/volume names, so a shared object must
-   * pin `name:` explicitly or the `external` reference in the consuming stack cannot be
-   * reconstructed reliably. Services cannot be shared this way — they have no `name` field.
-   */
-  shared(this: Resource<ShareableType, N, O, S>, dockerName?: string): Resource<T, N, O, S> {
-    // Recorded as metadata rather than wrapped into the body, so a later `.spec()` cannot
-    // replace the body and silently drop the pinned name.
-    return this.derive({ shared: dockerName ?? this._name })
-  }
+  return { name: compose.name, ...groups }
 }

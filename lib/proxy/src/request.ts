@@ -1,8 +1,8 @@
 import { forwardPath, normalizeUpstream, type ResolvedUpstream, type UpstreamTarget } from './upstream.ts'
 import { type ForwardedInfo, HeaderPolicy } from './header.ts'
+import type { ProxyContext } from './context.ts'
 import { BasePolicy, compose } from './base.ts'
 import { ProxyError } from './error.ts'
-import type { ProxyContext } from './context.ts'
 
 export class RequestPolicy extends BasePolicy<Request, Promise<Request>> {
   constructor() {

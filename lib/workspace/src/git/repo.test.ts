@@ -1,11 +1,11 @@
-import { existsSync } from 'node:fs'
 import { mkdtemp, mkdir, realpath, rm, writeFile } from 'node:fs/promises'
+import { afterAll, beforeAll, beforeEach, expect, test, vi } from 'vitest'
+import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { afterAll, beforeAll, beforeEach, expect, test, vi } from 'vitest'
 
-import { Shell } from '../util/index.ts'
 import { Repo, WorkTree } from './repo.ts'
+import { Shell } from '../shell/index.ts'
 
 /**
  * These run real git against a throwaway repository: the bugs worth catching here are the

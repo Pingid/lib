@@ -1,10 +1,10 @@
-import { Parse } from '../core/parse.ts'
-import { tokenize } from '../core/token.ts'
-import { clean } from './util.ts'
 import { entry, spec as specOf } from './table.ts'
-import { kebab } from '../arg.ts'
+import { tokenize } from '../core/token.ts'
+import { Parse } from '../core/parse.ts'
 import type { Arg } from '../arg.ts'
 import type { Cmd } from '../cmd.ts'
+import { clean } from './util.ts'
+import { kebab } from '../arg.ts'
 
 export declare namespace Resolve {
   interface Options {

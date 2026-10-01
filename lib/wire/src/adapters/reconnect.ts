@@ -1,31 +1,3 @@
-/*--------------------------------------------------------------------------
-
-@pingid/lib-wire/adapters
-
-The MIT License (MIT)
-
-Copyright (c) 2026 Dan Beaven <dm.beaven@gmail.com>
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-
----------------------------------------------------------------------------*/
-
 import type { Node, Unsub } from '../node/node.ts'
 import { TransportNode, type TransportHost } from '../node/transport.ts'
 import { systemClock, type Clock } from './clock.ts'
@@ -33,17 +5,20 @@ import { systemClock, type Clock } from './clock.ts'
 // ------------------------------------------------------------------
 // Connector
 // ------------------------------------------------------------------
+
 /** Produces a fresh node. Called again on every attempt. */
 export type Connector<T> = () => Node<T>
 
 // ------------------------------------------------------------------
 // ReconnectState
 // ------------------------------------------------------------------
+
 export type ReconnectState = 'connecting' | 'open' | 'retrying' | 'closed'
 
 // ------------------------------------------------------------------
 // ReconnectOptions
 // ------------------------------------------------------------------
+
 export interface ReconnectOptions<T> {
   backoff?: { base?: number; max?: number } | undefined
   /** 0..1 randomisation of each wait, applied symmetrically around it */
@@ -67,6 +42,7 @@ export interface ReconnectOptions<T> {
 // ------------------------------------------------------------------
 // ReconnectNode
 // ------------------------------------------------------------------
+
 /**
  * A node that outlives its transport. An attempt counts as successful once the transport
  * delivers its first message, so the far end's greeting is what tells this it worked.
@@ -130,9 +106,11 @@ export class ReconnectNode<T> implements Node<T> {
       { pending: options.pending, onError: options.onError, onDrop: options.onDrop },
     )
   }
+
   // ----------------------------------------------------------------
   // Node<T>
   // ----------------------------------------------------------------
+
   public send(msg: T): boolean {
     return this.#node.send(msg)
   }
@@ -145,9 +123,11 @@ export class ReconnectNode<T> implements Node<T> {
   public close(): void {
     this.#node.close()
   }
+
   // ----------------------------------------------------------------
   // Properties
   // ----------------------------------------------------------------
+
   public get state(): ReconnectState {
     return this.#state
   }
@@ -155,9 +135,11 @@ export class ReconnectNode<T> implements Node<T> {
   public get attempts(): number {
     return this.#attempts
   }
+
   // ----------------------------------------------------------------
   // RetryNow
   // ----------------------------------------------------------------
+
   /** Abandons the wait and tries now, resetting backoff */
   public retryNow(): void {
     if (this.#state === 'closed' || this.#state === 'open') return
@@ -170,9 +152,11 @@ export class ReconnectNode<T> implements Node<T> {
     this.#attempts = 0
     this.#attempt()
   }
+
   // ----------------------------------------------------------------
   // Write
   // ----------------------------------------------------------------
+
   #write(msg: T): boolean {
     if (this.#state === 'closed') return false
     if (this.#state === 'open' && this.#inner) return this.#inner.send(msg)
@@ -188,9 +172,11 @@ export class ReconnectNode<T> implements Node<T> {
     if (!live) return
     for (const msg of this.#held.splice(0)) live.send(msg)
   }
+
   // ----------------------------------------------------------------
   // Attempt
   // ----------------------------------------------------------------
+
   #attempt(): void {
     if (this.#state === 'closed') return
     this.#wait?.()
@@ -256,9 +242,11 @@ export class ReconnectNode<T> implements Node<T> {
     if (token !== this.#epoch) return stop()
     this.#detach = stop
   }
+
   // ----------------------------------------------------------------
   // Schedule
   // ----------------------------------------------------------------
+
   #schedule(): void {
     if (this.#state === 'closed') return
     this.#attempts += 1
@@ -271,9 +259,11 @@ export class ReconnectNode<T> implements Node<T> {
     const spread = delay * this.#jitter
     this.#wait = this.#clock.timer(() => this.#attempt(), Math.max(0, delay - spread + Math.random() * spread * 2))
   }
+
   // ----------------------------------------------------------------
   // Shutdown
   // ----------------------------------------------------------------
+
   #shutdown(): void {
     if (this.#state === 'closed') return
     this.#epoch += 1
@@ -287,9 +277,11 @@ export class ReconnectNode<T> implements Node<T> {
     this.#setState('closed')
     this.#host?.shut()
   }
+
   // ----------------------------------------------------------------
   // State
   // ----------------------------------------------------------------
+
   #setState(next: ReconnectState): void {
     if (next === this.#state) return
     this.#state = next

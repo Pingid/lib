@@ -1,7 +1,7 @@
 import { realpath, rm } from 'node:fs/promises'
 import path from 'node:path'
 
-import { Shell } from '../../util/index.ts'
+import { Shell } from '../../shell/index.ts'
 
 export type CreateWorkTree = {
   /** The repository the worktree is attached to. Every git command runs here. */

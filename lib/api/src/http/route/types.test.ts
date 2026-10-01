@@ -1,6 +1,6 @@
+import { expectTypeOf, it } from 'vitest'
 import { Type } from '@sinclair/typebox'
 import { z } from 'zod'
-import { expectTypeOf, it } from 'vitest'
 
 import type { NormalizedRouteResponseSchema, ReplyHandlers, ResponseTypes, RouteSpecResponse } from './types.ts'
 

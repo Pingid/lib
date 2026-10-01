@@ -1,6 +1,6 @@
+import { describe, expect, expectTypeOf, it } from 'vitest'
 import { Type } from '@sinclair/typebox'
 import { z } from 'zod'
-import { describe, expect, expectTypeOf, it } from 'vitest'
 
 import * as Http from './index.ts'
 

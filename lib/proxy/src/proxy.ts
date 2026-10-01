@@ -8,8 +8,8 @@ import {
 } from './upstream.ts'
 import { RequestPolicy, ResponsePolicy, rebuildRequest } from './request.ts'
 import { forwardedInfo, isSecure } from './forward.ts'
-import { SetCookiePolicy } from './cookie.ts'
 import type { ProxyContext } from './context.ts'
+import { SetCookiePolicy } from './cookie.ts'
 import { HeaderPolicy } from './header.ts'
 import { ProxyError } from './error.ts'
 

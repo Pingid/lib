@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'vitest'
 
-import { Arg } from '../arg.ts'
-import { Cmd } from '../cmd.ts'
 import { CliError } from './error.ts'
 import { Parse } from './parse.ts'
+import { Arg } from '../arg.ts'
+import { Cmd } from '../cmd.ts'
 
 /**
  * Characterisation of `route` and `parse` as they behave today. Written before the

@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'vitest'
 
+import { resolve, site } from './resolve.ts'
 import { Arg } from '../arg.ts'
 import { Cmd } from '../cmd.ts'
-import { resolve, site } from './resolve.ts'
 
 const tree = (): Cmd.Node =>
   Cmd.build('app')

@@ -1,31 +1,3 @@
-/*--------------------------------------------------------------------------
-
-@pingid/lib-wire/protocols
-
-The MIT License (MIT)
-
-Copyright (c) 2026 Dan Beaven <dm.beaven@gmail.com>
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-
----------------------------------------------------------------------------*/
-
 import { Hub, plugin, type HubOptions, type Meta } from '../../hub/index.ts'
 import { Interest } from '../../interest/index.ts'
 import { participant, tagged, type Node, type Unsub } from '../../node/index.ts'
@@ -34,6 +6,8 @@ import type { Frame, Key, Watch } from './frame.ts'
 // ------------------------------------------------------------------
 // Keys
 // ------------------------------------------------------------------
+
+/** A compound key, like a URL path */
 function hash([collection, id]: Key): string {
   return `${collection}/${id}`
 }
@@ -51,6 +25,7 @@ function expand([collection, id]: Key): Key[] {
 // ------------------------------------------------------------------
 // StoreOptions
 // ------------------------------------------------------------------
+
 export interface StoreOptions extends HubOptions<Frame> {
   /** The tag this protocol's frames ride under, so one transport can carry several */
   name: string
@@ -59,11 +34,13 @@ export interface StoreOptions extends HubOptions<Frame> {
 // ------------------------------------------------------------------
 // Sink
 // ------------------------------------------------------------------
+
 type Sink = (patch: unknown, at: Watch) => void
 
 // ------------------------------------------------------------------
 // Store
 // ------------------------------------------------------------------
+
 /**
  * The same machinery as Topics under a compound key, with expand doing the wildcard. Shares
  * nothing with topics except Interest, which never learns what a collection is. One end: the
@@ -108,16 +85,20 @@ export class Store {
     this.#here = participant(this.#hub)
     this.#here.listen((msg) => this.#inbound(msg))
   }
+
   // ----------------------------------------------------------------
   // Peers
   // ----------------------------------------------------------------
+
   /** Joins another end over any node. The returned Unsub removes and closes it. */
   public add(node: Node<unknown>, meta?: Meta): Unsub {
     return this.#hub.add(tagged<Frame>(node, this.#name), meta)
   }
+
   // ----------------------------------------------------------------
   // Records
   // ----------------------------------------------------------------
+
   /** Watches one record, or every record in the collection when id is '*' */
   public watch(collection: string, id: string, fn: Sink): Unsub {
     const key = hash([collection, id])
@@ -139,15 +120,19 @@ export class Store {
   public watched(): readonly Key[] {
     return this.#wants.wanted()
   }
+
   // ----------------------------------------------------------------
   // Lifetime
   // ----------------------------------------------------------------
+
   public close(): void {
     this.#hub.close()
   }
+
   // ----------------------------------------------------------------
   // Inbound
   // ----------------------------------------------------------------
+
   #inbound(msg: Frame): void {
     if (msg.t !== 'patch') return
     for (const key of expand([msg.c, msg.id])) {

@@ -1,4 +1,3 @@
-import ts from 'typescript'
 import {
   NEVER,
   QUESTION_TOKEN,
@@ -9,6 +8,7 @@ import {
   tsModifiers,
   tsPropertyIndex,
 } from 'openapi-typescript'
+import ts from 'typescript'
 
 export { NEVER, NUMBER, STRING, UNKNOWN, tsIntersection as intersection, tsUnion as union } from 'openapi-typescript'
 

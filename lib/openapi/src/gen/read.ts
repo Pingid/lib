@@ -1,8 +1,6 @@
-import ts from 'typescript'
 import * as oas from 'openapi-typescript'
+import ts from 'typescript'
 
-import * as Ast from './ast.ts'
-import { Doc, type DocOptions, type Source } from './doc.ts'
 import {
   Is,
   Media,
@@ -17,6 +15,8 @@ import {
   type Param,
   type Reply,
 } from './model.ts'
+import { Doc, type DocOptions, type Source } from './doc.ts'
+import * as Ast from './ast.ts'
 
 export type ReadOptions = DocOptions & {
   /** Overrides for openapi-typescript's transform context, e.g. `{ immutable: true }`. */

@@ -1,6 +1,6 @@
+import { describe, expect, expectTypeOf, it } from 'vitest'
 import { Hono as App } from 'hono'
 import { hc } from 'hono/client'
-import { describe, expect, expectTypeOf, it } from 'vitest'
 
 import { createItem, getFile, getItem, getStars, uploadFile } from './fixtures.ts'
 import * as Hono from './hono.ts'

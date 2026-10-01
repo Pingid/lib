@@ -1,6 +1,6 @@
+import type { Resolve } from './resolve.ts'
 import { Render } from '../core/render.ts'
 import { resolve } from './resolve.ts'
-import type { Resolve } from './resolve.ts'
 import type { Cmd } from '../cmd.ts'
 
 /** Leading dashes keep it clear of any declared subcommand, and out of help. */

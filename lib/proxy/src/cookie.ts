@@ -1,6 +1,6 @@
 import { matchesAny, trimEnd, underPrefix, type Pattern, type PatternArg } from './util.ts'
-import { compose, BasePolicy } from './base.ts'
 import type { ProxyContext } from './context.ts'
+import { compose, BasePolicy } from './base.ts'
 
 export class SetCookiePolicy extends BasePolicy<SetCookie, SetCookie | null> {
   constructor() {

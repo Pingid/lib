@@ -1,31 +1,3 @@
-/*--------------------------------------------------------------------------
-
-@pingid/lib-wire
-
-The MIT License (MIT)
-
-Copyright (c) 2026 Dan Beaven <dm.beaven@gmail.com>
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-
----------------------------------------------------------------------------*/
-
 import type { Node, Unsub } from './node.ts'
 
 const noop: Unsub = () => {}
@@ -33,6 +5,7 @@ const noop: Unsub = () => {}
 // ------------------------------------------------------------------
 // TransportHost
 // ------------------------------------------------------------------
+
 /** The inbound half of a transport, handed to open before there is a node */
 export interface TransportHost<T> {
   /** False once shut has run */
@@ -48,6 +21,7 @@ export interface TransportHost<T> {
 // ------------------------------------------------------------------
 // Transport
 // ------------------------------------------------------------------
+
 /** The outbound half, returned by open so release closes over what it attached */
 export interface Transport<T> {
   /** Never throws. False when the message was dropped. */
@@ -61,6 +35,7 @@ export interface Transport<T> {
 // ------------------------------------------------------------------
 // TransportOptions
 // ------------------------------------------------------------------
+
 export interface TransportOptions<T> {
   /** Inbound held before the first listen. 0 disables. Default 64. */
   pending?: number | undefined
@@ -71,6 +46,7 @@ export interface TransportOptions<T> {
 // ------------------------------------------------------------------
 // TransportNode
 // ------------------------------------------------------------------
+
 /**
  * The bookkeeping every adapter repeats: hold inbound until someone listens, fire closed
  * once, go inert afterwards. `open` runs inside this constructor and may shut synchronously,
@@ -123,9 +99,11 @@ export class TransportNode<T> implements Node<T> {
     // open shut the node before handing anything back. Release what it built.
     if (!this.#alive) this.#release()
   }
+
   // ----------------------------------------------------------------
   // Node<T>
   // ----------------------------------------------------------------
+
   public send(msg: T): boolean {
     return this.#alive && this.#transport !== undefined ? this.#transport.send(msg) : false
   }
@@ -151,9 +129,11 @@ export class TransportNode<T> implements Node<T> {
     }
     this.#shut()
   }
+
   // ----------------------------------------------------------------
   // Deliver
   // ----------------------------------------------------------------
+
   #deliver(msg: T): void {
     if (!this.#alive) return
     if (this.#sinks.size > 0) {
@@ -164,9 +144,11 @@ export class TransportNode<T> implements Node<T> {
     while (this.#held.length >= this.#pending) this.#options.onDrop?.(this.#held.shift() as T)
     this.#held.push(msg)
   }
+
   // ----------------------------------------------------------------
   // Shut
   // ----------------------------------------------------------------
+
   #shut(): void {
     if (!this.#alive) return
     this.#alive = false
@@ -188,9 +170,11 @@ export class TransportNode<T> implements Node<T> {
       this.#report(err)
     }
   }
+
   // ----------------------------------------------------------------
   // Faults
   // ----------------------------------------------------------------
+
   #report(err: unknown): void {
     if (this.#options.onError) return this.#options.onError(err)
     queueMicrotask(() => {

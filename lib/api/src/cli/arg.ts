@@ -1,8 +1,8 @@
-import type { Schema } from '../core/index.ts'
 import { choices, token as coerceToken } from '../core/coerce.ts'
-import { format, kebab } from '../core/text.ts'
-import { CliError } from './core/error.ts'
 import type { Compute, Intersect } from './core/util.ts'
+import { format, kebab } from '../core/text.ts'
+import type { Schema } from '../core/index.ts'
+import { CliError } from './core/error.ts'
 import type { Cmd } from './cmd.ts'
 
 export declare namespace Arg {

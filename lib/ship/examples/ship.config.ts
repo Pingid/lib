@@ -1,4 +1,4 @@
-import { Ship } from '../src/v2/index.ts'
+import { Config, Ship } from '../src/index.ts'
 
 // Plain TypeScript does the work a YAML file needs anchors for; what varies per deploy is
 // context, declared by the definitions that read it and supplied to `Ship.Resolve`.
@@ -45,7 +45,13 @@ const worker = Ship.Service('worker', (cx: Release, name) => ({
 
 export const app = Ship.Compose('app', [edge, pgData, dbPassword, postgres, proxy, api, worker])
 
-export default Ship.Resolve(app, {
-  registry: process.env['REGISTRY'] ?? 'ghcr.io/acme',
-  tag: process.env['TAG'] ?? 'latest',
+// `ship app up -d` resolves the stack on demand; relative paths resolve against this directory.
+export default Config.define({
+  stacks: {
+    app: () =>
+      Ship.Resolve(app, {
+        registry: process.env['REGISTRY'] ?? 'ghcr.io/acme',
+        tag: process.env['TAG'] ?? 'latest',
+      }),
+  },
 })

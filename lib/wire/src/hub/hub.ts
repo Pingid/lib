@@ -1,31 +1,3 @@
-/*--------------------------------------------------------------------------
-
-@pingid/lib-wire
-
-The MIT License (MIT)
-
-Copyright (c) 2026 Dan Beaven <dm.beaven@gmail.com>
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-
----------------------------------------------------------------------------*/
-
 import type { Node, Unsub } from '../node/node.ts'
 import type { Adder } from './adder.ts'
 import type { Hooks } from './hooks.ts'
@@ -36,6 +8,7 @@ import { HubPeer, type Peer } from './peer.ts'
 // ------------------------------------------------------------------
 // HubOptions
 // ------------------------------------------------------------------
+
 /** Faults, and messages nothing consumed */
 export interface HubOptions<T = unknown> {
   /** Called for anything a hook threw. Rethrown on a microtask when unset. */
@@ -47,6 +20,7 @@ export interface HubOptions<T = unknown> {
 // ------------------------------------------------------------------
 // Chain
 // ------------------------------------------------------------------
+
 type Chain<T> = (peer: Peer<T>, msg: T, end: (msg: T) => void) => void
 
 /** The identity chain, used until the plugins have been bound */
@@ -66,6 +40,7 @@ const noop: Unsub = () => {}
 // ------------------------------------------------------------------
 // Hub
 // ------------------------------------------------------------------
+
 /**
  * A set of peers and a hook chain. Nothing else. Admission is a hook closing the peer;
  * participation is a node you add.
@@ -102,9 +77,11 @@ export class Hub<T = unknown> implements Adder<T> {
     this.#inward = chain(this.#hooks, 'data')
     this.#outward = chain(this.#hooks, 'send')
   }
+
   // ----------------------------------------------------------------
   // Peers
   // ----------------------------------------------------------------
+
   /** Takes a node as a peer. The returned Unsub removes it and closes it. */
   public add(node: Node<T>, meta: Meta = {}): Unsub {
     if (this.#closed) return (node.close(), noop)
@@ -127,9 +104,11 @@ export class Hub<T = unknown> implements Adder<T> {
   public get peers(): readonly Peer<T>[] {
     return this.#list ?? (this.#list = [...this.#peers])
   }
+
   // ----------------------------------------------------------------
   // Lifetime
   // ----------------------------------------------------------------
+
   /** Subscribes to this hub closing. Fires immediately if it already has. */
   public closed(fn: () => void): Unsub {
     if (this.#closed) return (fn(), noop)
@@ -148,26 +127,32 @@ export class Hub<T = unknown> implements Adder<T> {
     for (const fn of [...this.#ended]) this.#guard(fn)
     this.#ended.clear()
   }
+
   // ----------------------------------------------------------------
   // Outbound
   // ----------------------------------------------------------------
+
   #outbound(node: Node<T>, peer: Peer<T>, msg: T): boolean {
     if (this.#closed) return false
     let sent = false
     this.#guard(() => this.#outward(peer, msg, (out) => void (sent = node.send(out))))
     return sent
   }
+
   // ----------------------------------------------------------------
   // Drop
   // ----------------------------------------------------------------
+
   #drop(peer: Peer<T>): void {
     if (!this.#peers.delete(peer)) return
     this.#list = null
     for (const hook of this.#hooks) if (hook.close) this.#guard(() => hook.close!(peer))
   }
+
   // ----------------------------------------------------------------
   // Faults
   // ----------------------------------------------------------------
+
   #guard(fn: () => void): void {
     try {
       fn()

@@ -1,12 +1,12 @@
+import type * as oas from 'openapi-typescript'
 import { describe, expect, it } from 'vitest'
 import ts from 'typescript'
-import type * as oas from 'openapi-typescript'
 
-import * as Ast from './ast.ts'
-import { Emit, bind } from './emit.ts'
 import { Media, Route } from './model.ts'
+import { Emit, bind } from './emit.ts'
 import { print } from './print.ts'
 import { read } from './read.ts'
+import * as Ast from './ast.ts'
 
 /** Runs the generated source through the compiler, reporting only what it says about that file. */
 const check = (source: string): string[] => {

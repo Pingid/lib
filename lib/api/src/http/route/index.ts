@@ -12,8 +12,8 @@ import type {
 
 import { contextFactory, type AdapterOptions } from './context/index.ts'
 import { resolver, type Injected, type Injects } from './inject.ts'
-import type { Schema } from '../../core/index.ts'
 import type { OperationObject } from 'openapi-typescript'
+import type { Schema } from '../../core/index.ts'
 
 export * from './types.ts'
 export * from './inject.ts'
@@ -32,6 +32,14 @@ export type Spec<P extends string> = [ParametersOf<P>] extends [never]
 // ------------------------------------------------------------------
 // Route definition
 // ------------------------------------------------------------------
+export interface Route<I extends RouteSpec = RouteSpec, C = any, R extends Request = Request> {
+  spec: I
+  handler: RouteHandler<I, C>
+  /** The providers the handler receives, kept for introspection. Already applied by `handler`. */
+  inject?: Injects
+  fetch: (r: R) => Promise<Response>
+}
+
 export const Route: {
   <const I extends RouteSpec, C = {}>(schema: I, handler: RouteHandler<I, C>): Route<I, C, Request>
   /**
@@ -94,14 +102,6 @@ export const bind = <I extends RouteSpec, C, D extends Injects>(
 type Method = NonNullable<RouteSpec['method']>
 
 export type Defined<P, M, Pa, Q, B, Res> = { path: P; method: M; params: Pa; query: Q; body: B; response: Res }
-
-export interface Route<I extends RouteSpec = RouteSpec, C = any, R extends Request = Request> {
-  spec: I
-  handler: RouteHandler<I, C>
-  /** The providers the handler receives, kept for introspection. Already applied by `handler`. */
-  inject?: Injects
-  fetch: (r: R) => Promise<Response>
-}
 
 // ------------------------------------------------------------------
 // Route handler

@@ -1,7 +1,7 @@
 import { Hono, type Context, type Handler, type TypedResponse } from 'hono'
-import type { HonoBase } from 'hono/hono-base'
-import type { MergePath, ToSchema } from 'hono/types'
 import type { StatusCode } from 'hono/utils/http-status'
+import type { MergePath, ToSchema } from 'hono/types'
+import type { HonoBase } from 'hono/hono-base'
 
 import {
   serve,
@@ -37,7 +37,7 @@ export const honoRoutes = <const R extends readonly AnyRoutable[], A extends Hon
 /** Read off `HonoBase`: `basePath()` returns it rather than `Hono`, and only it carries the base path. */
 export type WithHonoRoutes<A, R extends readonly AnyRoutable[]> =
   A extends HonoBase<infer E, infer S, infer B, infer P>
-    ? HonoBase<E, S & Intersect<Schema<R[number]['schema'], B>>, B, P>
+    ? HonoBase<E, S & Intersect<Schema<R[number]['spec'], B>>, B, P>
     : never
 
 type Schema<I, B extends string> = I extends Spec
@@ -68,7 +68,7 @@ export const honoRoute = <const I extends Spec, C = {}>(
       body: { json: () => c.req.json(), binary: () => c.req.arrayBuffer() },
       framework: c,
     })
-  return [rt.schema.method ?? 'GET', rt.schema.path, handler] as unknown as HonoOnArgs<I>
+  return [rt.spec.method ?? 'GET', rt.spec.path, handler] as unknown as HonoOnArgs<I>
 }
 
 export type HonoOnArgs<I extends Spec> = readonly [

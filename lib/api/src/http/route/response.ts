@@ -1,5 +1,5 @@
-import { Schema } from '../../core/index.ts'
 import type { ResponseProtocol, RouteSpecResponse } from './types.ts'
+import { Schema } from '../../core/index.ts'
 
 /** Normalise the three `response` shapes into `{ [status]: { [contentType]: schema | meta } }`. */
 export const byStatus = (r: RouteSpecResponse): Record<string, ResponseProtocol | undefined> => {

@@ -1,7 +1,7 @@
 import path from 'node:path'
 
-import { Repo, Shell } from '@pingid/lib-workspace'
 import { c, Cli, Completion } from '@pingid/lib-api/cli'
+import { Repo, Shell } from '@pingid/lib-workspace'
 
 const root = (...parts: string[]) => path.join(import.meta.dirname, '../', ...parts)
 

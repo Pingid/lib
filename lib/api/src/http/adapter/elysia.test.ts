@@ -1,12 +1,12 @@
-import { treaty } from '@elysiajs/eden'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 import { Type } from '@sinclair/typebox'
+import { treaty } from '@elysiajs/eden'
 import { Elysia as App } from 'elysia'
 import { z } from 'zod'
-import { describe, expect, expectTypeOf, it } from 'vitest'
 
+import { createItem, getFile, getItem, getStars, uploadFile } from './fixtures.ts'
 import * as Route from '../route/index.ts'
 import * as Elysia from './elysia.ts'
-import { createItem, getFile, getItem, getStars, uploadFile } from './fixtures.ts'
 
 const app = new App()
   .decorate('db', { stars: 7 })

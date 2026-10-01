@@ -1,9 +1,9 @@
-import { Elysia, type AnyElysia } from 'elysia'
 import type { ComposeElysiaResponse, CreateEden, CreateEdenResponse, JoinPath, UnwrapRoute } from 'elysia/types'
+import { Elysia, type AnyElysia } from 'elysia'
 
-import { Schema } from '../../core/index.ts'
 import { bodySchema } from '../route/context/extract.ts'
 import { byStatus } from '../route/response.ts'
+import { Schema } from '../../core/index.ts'
 
 import {
   serve,
@@ -47,7 +47,7 @@ export type WithElysiaRoutes<A extends AnyElysia, R extends readonly AnyRoutable
   A['~Singleton'],
   A['~Definitions'],
   A['~Metadata'],
-  A['~Routes'] & Intersect<Eden<A['~Prefix'], R[number]['schema'], X>>,
+  A['~Routes'] & Intersect<Eden<A['~Prefix'], R[number]['spec'], X>>,
   A['~Ephemeral'],
   A['~Volatile']
 >
@@ -103,7 +103,7 @@ export const elysiaRoute: {
       body: { json: () => ctx.body, binary: () => ctx.body },
       framework: ctx,
     })
-  return [(rt.schema.method ?? 'GET').toLowerCase(), rt.schema.path, handler, hook(rt.schema)] as any
+  return [(rt.spec.method ?? 'GET').toLowerCase(), rt.spec.path, handler, hook(rt.spec)] as any
 }
 
 /** The route's schemas and metadata as Elysia hooks, for Elysia's docs. The route still does the validating. */

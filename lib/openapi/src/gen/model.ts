@@ -1,5 +1,5 @@
-import type ts from 'typescript'
 import type * as oas from 'openapi-typescript'
+import type ts from 'typescript'
 
 import * as Ast from './ast.ts'
 

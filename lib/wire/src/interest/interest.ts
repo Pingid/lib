@@ -1,31 +1,3 @@
-/*--------------------------------------------------------------------------
-
-@pingid/lib-wire
-
-The MIT License (MIT)
-
-Copyright (c) 2026 Dan Beaven <dm.beaven@gmail.com>
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-
----------------------------------------------------------------------------*/
-
 import type { Hooks, Hub, Peer, Plugin } from '../hub/index.ts'
 import type { Unsub } from '../node/node.ts'
 import type { Declaration } from './declaration.ts'
@@ -33,6 +5,7 @@ import type { Declaration } from './declaration.ts'
 // ------------------------------------------------------------------
 // InterestOptions
 // ------------------------------------------------------------------
+
 /** How declarations ride your wire, and what a key is */
 export interface InterestOptions<T, K> {
   /** Null when the message is not a declaration */
@@ -48,6 +21,7 @@ export interface InterestOptions<T, K> {
 // ------------------------------------------------------------------
 // Interest
 // ------------------------------------------------------------------
+
 /**
  * Who wants what, and keeping the neighbours told. Owns the index, the diff that tells
  * each peer what the others want, and the cleanup. No wire, no key type.
@@ -88,9 +62,11 @@ export class Interest<T, K> implements Plugin<T> {
     this.#changes = new Set<() => void>()
     this.#hub = null
   }
+
   // ----------------------------------------------------------------
   // Plugin<T>
   // ----------------------------------------------------------------
+
   public bind(hub: Hub<T>): Hooks<T> {
     this.#hub = hub
     return {
@@ -106,9 +82,11 @@ export class Interest<T, K> implements Plugin<T> {
       },
     }
   }
+
   // ----------------------------------------------------------------
   // Queries
   // ----------------------------------------------------------------
+
   /** Peers wanting key, from excluded, deduplicated across expansions */
   public match(key: K, from?: Peer<T>): readonly Peer<T>[] {
     const out: Peer<T>[] = []
@@ -137,9 +115,11 @@ export class Interest<T, K> implements Plugin<T> {
   public of(peer: Peer<T>): readonly K[] {
     return [...(this.#byPeer.get(peer)?.values() ?? [])]
   }
+
   // ----------------------------------------------------------------
   // Mutation
   // ----------------------------------------------------------------
+
   /** Declares on a peer's behalf, for interest that never crossed a wire */
   public set(peer: Peer<T>, key: K, on: boolean): void {
     const id = this.#hash(key)
@@ -166,9 +146,11 @@ export class Interest<T, K> implements Plugin<T> {
     this.#told.delete(peer)
     this.#sync()
   }
+
   // ----------------------------------------------------------------
   // Events
   // ----------------------------------------------------------------
+
   /** A peer newly wants a key. Where replaying retained state belongs. */
   public onWant(fn: (peer: Peer<T>, key: K) => void): Unsub {
     this.#wants.add(fn)
@@ -179,9 +161,11 @@ export class Interest<T, K> implements Plugin<T> {
     this.#changes.add(fn)
     return () => void this.#changes.delete(fn)
   }
+
   // ----------------------------------------------------------------
   // Sync
   // ----------------------------------------------------------------
+
   /** Tells every peer the union of what the others want, as a diff */
   #sync(): void {
     if (this.#hub === null) return

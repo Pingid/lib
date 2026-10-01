@@ -1,10 +1,10 @@
 import type * as oa from 'openapi-typescript'
+import { describe, expect, it } from 'vitest'
 import { Type } from '@sinclair/typebox'
 import { z } from 'zod'
-import { describe, expect, it } from 'vitest'
 
-import * as Route from '../../route/index.ts'
 import { resolve as document, type OpenApiConfig } from './index.ts'
+import * as Route from '../../route/index.ts'
 
 const Item = Type.Object({ id: Type.String(), name: Type.String() })
 

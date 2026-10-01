@@ -1,5 +1,5 @@
-import { validate } from '../route/context/extract.ts'
 import { open, type Override, type Provider } from '../route/inject.ts'
+import { validate } from '../route/context/extract.ts'
 import * as Route from '../route/index.ts'
 
 type P<T> = T | Promise<T>
@@ -92,9 +92,7 @@ type NeedsOf<T> = T extends Router<infer N> ? N : T extends Route.Route<any, inf
  * Bun.serve({ fetch: api.fetch })
  */
 export const Router: {
-  <const R extends readonly Node[]>(
-    options: RouterOptions<R> & { context: (req: Request) => P<Needs<R>> },
-  ): Router<{}>
+  <const R extends readonly Node[]>(options: RouterOptions<R> & { context: (req: Request) => P<Needs<R>> }): Router<{}>
   <const R extends readonly Node[]>(options: RouterOptions<R>): Router<Needs<R>>
 } = (options: Router['options']): Router<any> => {
   let compiled: Fetch | undefined

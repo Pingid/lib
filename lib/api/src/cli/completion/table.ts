@@ -1,7 +1,7 @@
-import { clean } from './util.ts'
-import { kebab } from '../arg.ts'
 import type { Arg } from '../arg.ts'
 import type { Cmd } from '../cmd.ts'
+import { clean } from './util.ts'
+import { kebab } from '../arg.ts'
 
 export declare namespace Table {
   type Item = Arg.Item

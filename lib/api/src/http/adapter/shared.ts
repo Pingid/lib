@@ -1,17 +1,17 @@
-import type { Schema } from '../../core/index.ts'
 import { readBody, validate, type BodyReaders } from '../route/context/extract.ts'
+import type { Schema } from '../../core/index.ts'
 import * as Route from '../route/index.ts'
 
 /** A route with a path, as frameworks need one to mount it. */
 export type Spec = Route.RouteSpec & { path: string }
 
 export interface Routable<I extends Route.RouteSpec, C> {
-  schema: I
+  spec: I
   handler: Route.RouteHandler<I, C>
 }
 
 /** Any mountable route. Structural, since `Routable` is contravariant in its spec through `handler`. */
-export type AnyRoutable = { schema: Spec; handler: (ctx: any, context: any) => unknown }
+export type AnyRoutable = { spec: Spec; handler: (ctx: any, context: any) => unknown }
 
 /** Request parts as the host framework parsed them. Thunks, so a part the route does not declare is never read. */
 export interface Parts<F> {
@@ -38,7 +38,7 @@ export const serve = <F, C>(rt: Routable<any, C>, context: (framework: F) => C) 
     query: read('query'),
     body: (req, spec) => readBody(spec, req, parts.get(req)!.body),
     context: (req) => context(parts.get(req)!.framework),
-  })(rt.schema)
+  })(rt.spec)
   return (req: Request, p: Parts<F>) => (parts.set(req, p), run(req))
 }
 

@@ -1,4 +1,4 @@
-import { Shell, ShellError, env } from '../util/index.ts'
+import { Shell } from '../shell/index.ts'
 
 import * as util from './util/index.ts'
 import * as cmd from './cmd.ts'
@@ -64,7 +64,7 @@ export class Git {
     const r = await Shell.run('git', ['diff', '--cached', '--quiet'], { cwd: this.dir })
     if (r.code === 0) return false
     if (r.code === 1) return true
-    throw new ShellError(r)
+    throw new Shell.ShellError(r)
   }
 
   /** The URL of a remote, `origin` by default. */
@@ -163,3 +163,5 @@ export class WorkTree extends Repo {
     await this.remove()
   }
 }
+
+const env = (name: string) => process.env[name]

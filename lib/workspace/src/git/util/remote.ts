@@ -1,4 +1,5 @@
-import { Shell, env } from '../../util/index.ts'
+import { Shell } from '../../shell/index.ts'
+import { env } from './env.ts'
 
 /** The pieces of a remote: who owns it, what it is called, and where it lives. */
 export type Origin = { owner: string; repo: string; origin: string }

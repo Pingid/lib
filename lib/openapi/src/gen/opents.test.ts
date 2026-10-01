@@ -1,13 +1,13 @@
-import { describe, expect, it } from 'vitest'
 import type * as oas from 'openapi-typescript'
+import { describe, expect, it } from 'vitest'
 import ts from 'typescript'
 
-import * as Ast from './ast.ts'
-import { Emit } from './emit.ts'
 import { Decl, Is, Name, Route } from './model.ts'
-import { Op } from './ops.ts'
 import { print } from './print.ts'
+import { Emit } from './emit.ts'
 import { read } from './read.ts'
+import * as Ast from './ast.ts'
+import { Op } from './ops.ts'
 
 const doc = {
   openapi: '3.1.0',
