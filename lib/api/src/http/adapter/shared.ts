@@ -38,7 +38,7 @@ export const serve = <F, C>(rt: Routable<any, C>, context: (framework: F) => C) 
     query: read('query'),
     body: (req, spec) => readBody(spec, req, parts.get(req)!.body),
     context: (req) => context(parts.get(req)!.framework),
-  })(rt.spec)
+  })(rt)
   return (req: Request, p: Parts<F>) => (parts.set(req, p), run(req))
 }
 
