@@ -1,3 +1,4 @@
+import { fields, searchParams } from '../../../core/coerce.ts'
 import { Schema } from '../../../core/index.ts'
 
 import { type RouteSpec } from '../types.ts'
@@ -29,7 +30,7 @@ const extractPath = <R extends Request, I extends RouteSpec>(rt?: I): Extractor<
   const paramsOf = pathParams(rt.path)
   return async (req: Request, s) => {
     const schema = s ?? rt.params
-    return schema ? validate(schema, paramsOf(req.url)) : paramsOf(req.url)
+    return schema ? validateWire(schema, paramsOf(req.url)) : paramsOf(req.url)
   }
 }
 
@@ -63,7 +64,7 @@ const extractQuery = <R extends Request, I extends RouteSpec>(rt?: I): Extractor
   const schema = rt?.query
   if (schema === undefined) return () => undefined
   return async (req: Request, s) =>
-    validate(s ?? schema, Object.fromEntries(new URL(req.url, 'http://localhost').searchParams))
+    validateWire(s ?? schema, searchParams(new URL(req.url, 'http://localhost').searchParams))
 }
 
 /** Rejects with a 422 `Response`, which the route adapter returns as-is. */
@@ -71,6 +72,27 @@ export const validate = async (schema: Schema.Type, value: unknown) => {
   const result = await Schema.validate<any>(value, schema)
   if (result.ok) return result.value
   return Promise.reject(json({ error: 'validation', issues: result.error }, { status: 422 }))
+}
+
+/**
+ * Validate wire strings — path params, a query — after reading each toward the schema's input JSON
+ * Schema, so `?limit=5` is `5` and `?tag=a&tag=b` is `['a', 'b']` whichever schema library declared it.
+ */
+export const validateWire = (schema: Schema.Type, values: Record<string, string | string[] | undefined> | undefined) =>
+  validate(schema, fields(inputJson(schema), values))
+
+const jsons = new WeakMap<object, Schema.Json | undefined>()
+
+/** The schema's input JSON Schema, once per schema. A schema that cannot produce one gets its strings as-is. */
+const inputJson = (schema: Schema.Type): Schema.Json | undefined => {
+  if (!jsons.has(schema)) {
+    let json: Schema.Json | undefined
+    try {
+      json = Schema.toJson(schema, 'input')
+    } catch {}
+    jsons.set(schema, json)
+  }
+  return jsons.get(schema)
 }
 
 const pathParams = (def: string) => {

@@ -111,3 +111,30 @@ const keep = (json: Schema.Json, value: string): unknown => {
   const result = token(json, value)
   return result.ok ? result.value : value
 }
+
+/**
+ * Wire fields — a query string, path params — to the object a JSON Schema describes, each key
+ * read with `tokens`. A key the schema does not describe keeps its last value, as before.
+ *
+ * @example
+ * ```ts
+ * const json = { type: 'object', properties: { limit: { type: 'integer' }, tag: { type: 'array', items: { type: 'string' } } } }
+ * fields(json, { limit: ['5'], tag: ['a', 'b'] }) // { limit: 5, tag: ['a', 'b'] }
+ * ```
+ */
+export const fields = (
+  json: Schema.Json | undefined,
+  values: Record<string, string | string[] | undefined> | undefined,
+): Record<string, unknown> =>
+  Object.fromEntries(
+    Object.entries(values ?? {})
+      .filter((entry): entry is [string, string | string[]] => entry[1] !== undefined)
+      .map(([key, value]) => [key, tokens(json?.properties?.[key], Array.isArray(value) ? value : [value])]),
+  )
+
+/** Repeated keys collected, since `Object.fromEntries(params)` would keep only the last. */
+export const searchParams = (params: URLSearchParams): Record<string, string[]> => {
+  const out: Record<string, string[]> = {}
+  for (const [key, value] of params) (out[key] ??= []).push(value)
+  return out
+}

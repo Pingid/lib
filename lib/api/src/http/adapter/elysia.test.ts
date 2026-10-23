@@ -4,7 +4,7 @@ import { treaty } from '@elysiajs/eden'
 import { Elysia as App } from 'elysia'
 import { z } from 'zod'
 
-import { createItem, getFile, getItem, getStars, uploadFile } from './fixtures.ts'
+import { createItem, getFile, getItem, getStars, search, uploadFile } from './fixtures.ts'
 import * as Route from '../route/index.ts'
 import * as Elysia from './elysia.ts'
 
@@ -160,5 +160,18 @@ describe('elysia binary request bodies', () => {
     )
     expect(res.status).toBe(201)
     expect(await res.json()).toEqual({ size: 4 })
+  })
+})
+
+describe('elysia query strings', () => {
+  const get = async (path: string) =>
+    new App().route(...Elysia.elysiaRoute(search)).handle(new Request(`http://localhost${path}`))
+
+  it('coerces a zod query number', async () => {
+    expect(await (await get('/search?limit=5')).json()).toEqual({ limit: 5, tag: [] })
+  })
+
+  it('collects a repeated key into an array', async () => {
+    expect(await (await get('/search?limit=1&tag=a&tag=b')).json()).toEqual({ limit: 1, tag: ['a', 'b'] })
   })
 })

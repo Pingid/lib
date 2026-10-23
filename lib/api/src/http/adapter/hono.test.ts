@@ -2,7 +2,7 @@ import { describe, expect, expectTypeOf, it } from 'vitest'
 import { Hono as App } from 'hono'
 import { hc } from 'hono/client'
 
-import { createItem, getFile, getItem, getStars, uploadFile } from './fixtures.ts'
+import { createItem, getFile, getItem, getStars, search, uploadFile } from './fixtures.ts'
 import * as Hono from './hono.ts'
 
 const app = new App()
@@ -134,5 +134,17 @@ describe('hono binary request bodies', () => {
     })
     expect(res.status).toBe(201)
     expect(await res.json()).toEqual({ size: 4 })
+  })
+})
+
+describe('hono query strings', () => {
+  const get = async (path: string) => new App().on(...Hono.honoRoute(search)).request(path)
+
+  it('coerces a zod query number', async () => {
+    expect(await (await get('/search?limit=5')).json()).toEqual({ limit: 5, tag: [] })
+  })
+
+  it('collects a repeated key into an array', async () => {
+    expect(await (await get('/search?limit=1&tag=a&tag=b')).json()).toEqual({ limit: 1, tag: ['a', 'b'] })
   })
 })

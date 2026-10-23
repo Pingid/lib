@@ -2,6 +2,7 @@ import type { ComposeElysiaResponse, CreateEden, CreateEdenResponse, JoinPath, U
 import { Elysia, type AnyElysia } from 'elysia'
 
 import { bodySchema } from '../route/context/extract.ts'
+import { searchParams } from '../../core/coerce.ts'
 import { byStatus } from '../route/response.ts'
 import { Schema } from '../../core/index.ts'
 
@@ -98,8 +99,9 @@ export const elysiaRoute: {
   const run = serve(rt, context)
   const handler = (ctx: Ctx) =>
     run(ctx.request, {
-      params: () => ctx.params,
-      query: () => ctx.query,
+      params: () => ctx.params as Record<string, string> | undefined,
+      // Elysia keeps only the last of a repeated key, so read the URL's own.
+      query: () => searchParams(new URL(ctx.request.url).searchParams),
       body: { json: () => ctx.body, binary: () => ctx.body },
       framework: ctx,
     })

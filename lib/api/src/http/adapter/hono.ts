@@ -64,7 +64,7 @@ export const honoRoute = <const I extends Spec, C = {}>(
   const handler = (c: Context) =>
     run(c.req.raw, {
       params: () => c.req.param(),
-      query: () => c.req.query(),
+      query: () => c.req.queries(),
       body: { json: () => c.req.json(), binary: () => c.req.arrayBuffer() },
       framework: c,
     })

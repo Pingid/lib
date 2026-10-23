@@ -1,4 +1,4 @@
-import { validate } from '../route/context/extract.ts'
+import { validateWire } from '../route/context/extract.ts'
 import * as Route from '../route/index.ts'
 
 interface BunRequest extends Request {
@@ -29,5 +29,5 @@ export const bunRoute = <I extends Route.RouteSpec, C>(rt: Route.Route<I, C>) =>
 const extractPath = <I extends Route.RouteSpec>(rt: Route.Route<I>) => {
   const schema = rt.spec.params
   if (schema === undefined) return () => undefined
-  return async (req: BunRequest) => validate(schema, req.params)
+  return async (req: BunRequest) => validateWire(schema, req.params)
 }

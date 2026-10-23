@@ -8,6 +8,8 @@ import { Jitt } from '../_util/shared.ts'
 import { File } from '../_util/file.ts'
 import { bundler, sibling, type Bundler, type Output } from './build.ts'
 
+import * as CL from './client.ts'
+
 const NS = namespace('iife')
 
 export type Entries = Record<string, string | Entry>
@@ -190,6 +192,10 @@ const fail = (res: ServerResponse, e: unknown, config: ResolvedConfig) => {
 const wrapper = (mod: Mod, url: string, hot: string | null) => {
   const w = Jitt.create()
   if (hot) w.ln(`import { ping } from ${Jitt.str(sibling('./client.ts'))}`)
+  // @ts-ignore
+  if (CL.ping) {
+  }
+
   w.ln(`const url = ${Jitt.str(url)}`)
   w.ln('export default url')
 

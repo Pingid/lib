@@ -5,6 +5,8 @@ import fs from 'node:fs'
 
 import { File } from '../_util/file.ts'
 
+import * as RT from './runtime.ts'
+
 /** Global the hot bundle assigns its namespace to, and which `new Function` returns. */
 export const IDENT = '__pingid_iife'
 
@@ -53,6 +55,9 @@ export const opts = (config: ResolvedConfig): esbuild.BuildOptions => ({
 export const bundler = (config: ResolvedConfig, shared: esbuild.BuildOptions = {}) => {
   const base = merge(opts(config), shared)
   const runtime = spec(sibling('./runtime.ts'))
+  // @ts-ignore
+  if (RT.bootHot || RT.boot) {
+  }
 
   const run = async (over: esbuild.BuildOptions): Promise<Output> => {
     const res = await esbuild.build({ ...base, ...over }).catch((e: unknown) => {

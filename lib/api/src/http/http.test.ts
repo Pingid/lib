@@ -1,5 +1,6 @@
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import { Type } from '@sinclair/typebox'
+import * as zm from 'zod/mini'
 import { z } from 'zod'
 
 import * as Http from './index.ts'
@@ -96,6 +97,62 @@ describe('Route.Route', () => {
       throw new Error('boom')
     })
     await expect(call(route, '/items')).rejects.toThrow('boom')
+  })
+})
+
+describe('query and path strings', () => {
+  const echo = (query: Http.RouteSpec['query'], params?: Http.RouteSpec['params']) =>
+    Http.Route({ path: '/items/:id', query, params }, (c) =>
+      c.json({ path: c.params.path, query: c.params.query } as never),
+    )
+
+  const schemas = {
+    typebox: {
+      query: Type.Object({ limit: Type.Integer(), tag: Type.Optional(Type.Array(Type.String())) }),
+      params: Type.Object({ id: Type.Integer() }),
+    },
+    zod: {
+      query: z.object({ limit: z.number().int(), tag: z.array(z.string()).optional() }),
+      params: z.object({ id: z.number() }),
+    },
+    // Mini schemas carry no `~standard.jsonSchema`; zod's `toJSONSchema` returns one that does, keeping `validate`.
+    'zod/mini': {
+      query: zm.toJSONSchema(zm.object({ limit: zm.number(), tag: zm.optional(zm.array(zm.string())) })),
+      params: zm.toJSONSchema(zm.object({ id: zm.number() })),
+    },
+  }
+
+  describe.each(Object.entries(schemas))('with %s', (_, { query, params }) => {
+    it('coerces a query number', async () => {
+      expect(await (await call(echo(query), '/items/a?limit=5')).json()).toMatchObject({ query: { limit: 5 } })
+    })
+
+    it('collects a repeated key into an array', async () => {
+      const res = await call(echo(query), '/items/a?limit=1&tag=a&tag=b')
+      expect(await res.json()).toMatchObject({ query: { limit: 1, tag: ['a', 'b'] } })
+    })
+
+    it('reads a single value as a one-item array', async () => {
+      expect(await (await call(echo(query), '/items/a?limit=1&tag=a')).json()).toMatchObject({ query: { tag: ['a'] } })
+    })
+
+    it('coerces path params', async () => {
+      expect(await (await call(echo(query, params), '/items/7?limit=1')).json()).toMatchObject({ path: { id: 7 } })
+    })
+
+    it('still rejects what does not coerce', async () => {
+      const res = await call(echo(query), '/items/a?limit=many')
+      expect(res.status).toBe(422)
+      expect(await res.json()).toMatchObject({ issues: [{ path: 'limit' }] })
+    })
+  })
+
+  it('types a zod/mini schema from its toJSONSchema payload', () => {
+    const route = Http.Route({ path: '/q', query: schemas['zod/mini'].query }, (c) => c.json(c.params.query as never))
+    expectTypeOf<Parameters<typeof route.handler>[0]['params']['query']>().toEqualTypeOf<{
+      limit: number
+      tag?: string[] | undefined
+    }>()
   })
 })
 

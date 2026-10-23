@@ -1,4 +1,5 @@
 import { Type } from '@sinclair/typebox'
+import { z } from 'zod'
 
 import * as Route from '../route/index.ts'
 
@@ -48,4 +49,11 @@ export const uploadFile = Route.Route('/files', {
   body: { 'application/octet-stream': {} },
   response: { 201: { 'application/json': Type.Object({ size: Type.Integer() }) } },
   handle: (c) => c.json({ size: c.params.body.byteLength }, 201),
+})
+
+/** A zod query: numbers and repeated keys need coercing, which TypeBox alone used to get. */
+export const search = Route.Route('/search', {
+  query: z.object({ limit: z.number(), tag: z.array(z.string()).optional() }),
+  response: z.object({ limit: z.number(), tag: z.array(z.string()) }),
+  handle: (c) => c.json({ limit: c.params.query.limit, tag: c.params.query.tag ?? [] }),
 })
