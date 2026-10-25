@@ -79,6 +79,19 @@ const CheckoutOpts = { create: Tcli.value('-b'), force: Tcli.flag(), detach: Tcl
 export type CheckoutOpts = typeof CheckoutOpts
 export const checkout = recipe(['checkout'], CheckoutOpts)
 
+const ResetOpts = {
+  soft: Tcli.flag(),
+  mixed: Tcli.flag(),
+  hard: Tcli.flag(),
+  merge: Tcli.flag(),
+  keep: Tcli.flag(),
+  quiet: Tcli.flag(),
+  ref: Tcli.positional(),
+  pathspec: Tcli.positional<string[]>(),
+}
+export type ResetOpts = typeof ResetOpts
+export const reset = recipe(['reset'], ResetOpts)
+
 const StatusOpts = {
   porcelain: Tcli.flag(),
   short: Tcli.flag(),

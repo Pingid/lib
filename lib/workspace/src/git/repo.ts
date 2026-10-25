@@ -31,6 +31,7 @@ export class Git {
   checkout = (ref?: string) => cmd.checkout({ cwd: this.dir, ref })
   status = () => cmd.status({ cwd: this.dir })
   diff = (ref?: string) => cmd.diff({ cwd: this.dir, ref })
+  reset = (ref?: string) =>  ref ? cmd.reset().ref(ref) : cmd.reset()
   rev_parse = (ref?: string) => cmd.rev_parse({ cwd: this.dir, ref })
 
   /** Escape hatch for anything without a recipe. Resolves with trimmed stdout. */
