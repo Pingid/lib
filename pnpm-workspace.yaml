@@ -1,5 +1,6 @@
 packages:
   - 'lib/*'
+  - 'workspace'
 
 allowBuilds:
   esbuild: true

@@ -43,6 +43,8 @@
     "@pingid/lib-api": "link:lib/api",
     "@pingid/lib-published": "github:Pingid/lib#build-75",
     "@pingid/lib-workspace": "link:lib/workspace",
+    "@pingid/lib-internal": "link:./workspace",
+    "@pingid/prettier-plugin-sort-imports": "^0.0.13",
     "@types/bun": "^1.4.2",
     "@types/node": "^22.20.4",
     "@typescript/typescript6": "^6.0.2",
@@ -60,8 +62,5 @@
     "plugins": [
       "@pingid/prettier-plugin-sort-imports"
     ]
-  },
-  "dependencies": {
-    "@pingid/prettier-plugin-sort-imports": "link:../prettier-plugin-sort-imports"
   }
 }

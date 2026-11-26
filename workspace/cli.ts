@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import path from 'node:path'
 
 import { c, Cli, Completion } from '@pingid/lib-api/cli'
@@ -10,7 +11,19 @@ const build = c.cmd({
   description: 'Build the source',
   options: {},
   handle: async () => {
-    await Bun.$`vite build --config ${root('workspace/package/vite.config.ts')}`
+    Shell.io`vite build --config ${root('workspace/package/vite.config.ts')}`
+  },
+})
+
+const versions = c.cmd({
+  name: 'versions',
+  description: 'Build the source',
+  options: {},
+  handle: async () => {
+    const repo = await Repo.discover()
+    const all = await repo.tags();
+    const blds = all.filter(x => x.startsWith('build-')).map(x => x.replace('build-','')).map(Number).sort((a,b) => b - a).map(x => `build-${x}`);
+    console.log(blds.slice(0,6).join('\n'))
   },
 })
 
@@ -53,6 +66,7 @@ const api = c.cmd({
   commands: {
     build,
     publish,
+    versions
   },
 })
 
