@@ -24,16 +24,36 @@ export type Provider<T = unknown> = (req: Request, get: Get) => P<T>
 
 export type Injects = { [key: string]: Provider<any> }
 
-/** The values a route's `inject` resolves to. */
+/**
+ * The values a route's `inject` resolves to.
+ *
+ * @example
+ * const deps = { user, db }
+ * type Deps = Injected<typeof deps> // { user: User; db: Db }
+ */
 export type Injected<D> = { [K in keyof D]: D[K] extends Provider<any> ? Awaited<ReturnType<D[K]>> : never }
 
 /** A provider swapped for another, e.g. a fake in tests. */
 export type Override = readonly [Provider<any>, Provider<any>]
+
+/**
+ * Swap `provider` for `by` on every route below a router. `by` must produce the same type.
+ *
+ * @example
+ * const test = Router({ override: [override(user, () => ({ id: 'fake' }))], routes: [Update] })
+ */
 export const override = <T>(provider: Provider<T>, by: Provider<NoInfer<T>>): Override => [provider, by]
 
 const scopes = new WeakMap<Request, Get>()
 
-/** Start a fresh scope for a request. Routers call this; call it yourself only to apply overrides. */
+/**
+ * Start a fresh scope for a request. Routers call this; call it yourself only to apply overrides.
+ *
+ * @example
+ * // a standalone route, with a fake user for this request only
+ * open(req, new Map([[user, () => ({ id: 'fake' })]]))
+ * await Update.fetch(req)
+ */
 export const open = (req: Request, overrides?: ReadonlyMap<Provider<any>, Provider<any>>): Get => {
   const cache = new Map<Provider<any>, Promise<any>>()
   const get: Get = (p) => {
@@ -52,10 +72,21 @@ export const open = (req: Request, overrides?: ReadonlyMap<Provider<any>, Provid
 /** The request's scope, opened on first use. */
 export const scope = (req: Request): Get => scopes.get(req) ?? open(req)
 
-/** Resolve a provider for a request, e.g. from middleware. Shares the route's cache. */
+/**
+ * Resolve a provider for a request, e.g. from middleware. Shares the route's cache.
+ *
+ * @example
+ * const signedIn = guard(async (req) => !!(await inject(req, session)))
+ */
 export const inject = <T>(req: Request, provider: Provider<T>): Promise<T> => scope(req)(provider)
 
-/** A provider built once for the process rather than per request. A failed build is retried. */
+/**
+ * A provider built once for the process rather than per request. A failed build is retried.
+ *
+ * @example
+ * const db = once(() => connect(process.env.DB_URL!))
+ * Route('/apps', { inject: { db }, handle: async (c, { db }) => c.json(await db.apps()) })
+ */
 export const once = <T>(build: () => P<T>): Provider<T> => {
   let v: Promise<T> | undefined
   return () =>
@@ -63,6 +94,22 @@ export const once = <T>(build: () => P<T>): Provider<T> => {
       v = undefined
       throw e
     }))
+}
+
+/**
+ * A typed provider with no implementation, filled by an `override` on a router above the routes using it.
+ * Resolving one that was never filled throws, so a missing binding fails loudly rather than as `undefined`.
+ *
+ * @example
+ * const db = slot<Db>('db')
+ * Router({ override: [override(db, once(() => connect(env.DB_URL)))], routes })
+ */
+export const slot = <T>(name: string): Provider<T> => {
+  const p: Provider<T> = () => {
+    throw new Error(`Provider slot '${name}' was not filled; bind it with override(${name}, ...)`)
+  }
+  Object.defineProperty(p, 'name', { value: name })
+  return p
 }
 
 /** Resolve `inject` in parallel into an object keyed like it. */

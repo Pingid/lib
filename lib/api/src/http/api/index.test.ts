@@ -131,6 +131,19 @@ describe('Router', () => {
     expect(await res.json()).toEqual({ id: 'ab', by: 'fake' })
   })
 
+  it('fills a slot with override, and fails loudly without one', async () => {
+    const greeting = Route.slot<string>('greeting')
+    const Hi = Route.Route('/hi', {
+      response: Type.Object({ msg: Type.String() }),
+      inject: { greeting },
+      handle: (c, { greeting }) => c.json({ msg: greeting }),
+    })
+    expectTypeOf(greeting).toEqualTypeOf<Route.Provider<string>>()
+    const filled = Router({ override: [Route.override(greeting, () => 'hello')], routes: [Hi] })
+    expect(await (await filled.fetch(new Request('http://localhost/hi'))).json()).toEqual({ msg: 'hello' })
+    await expect(Router({ routes: [Hi] }).fetch(new Request('http://localhost/hi'))).rejects.toThrow(/slot 'greeting'/)
+  })
+
   it('injects on a standalone route too', async () => {
     expect(await (await List.fetch(new Request('http://localhost/apps'))).json()).toEqual({ apps: [{ id: 'a' }] })
   })

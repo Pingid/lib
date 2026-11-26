@@ -21,6 +21,19 @@ export * from './inject.ts'
 // ------------------------------------------------------------------
 // Route schema definition
 // ------------------------------------------------------------------
+
+/**
+ * A route's contract without its handler, for sharing between server, client and docs.
+ * `params` is required, and checked against the path, whenever the path has `:params`.
+ *
+ * @example
+ * const getItem = Spec('/items/:id', {
+ *   method: 'GET',
+ *   params: Type.Object({ id: Type.String() }),
+ *   response: { 200: { 'application/json': Item }, 404: { 'text/plain': Type.String() } },
+ * })
+ * const GetItem = Route(getItem, (c) => c.json(items.get(c.params.path.id)))
+ */
 export const Spec: {
   <const P extends string, S extends Spec<P>>(path: P, params: S): Compute<{ path: P } & S>
 } = (path: string, params: any) => ({ path, ...params })
@@ -40,6 +53,19 @@ export interface Route<I extends RouteSpec = RouteSpec, C = any, R extends Reque
   fetch: (r: R) => Promise<Response>
 }
 
+/**
+ * A route: a spec plus its handler, with a `fetch` that validates and answers on its own.
+ *
+ * @example
+ * const Update = Route('/apps/:slug', {
+ *   method: 'PUT',
+ *   params: Type.Object({ slug: Type.String() }),
+ *   body: App,
+ *   response: Type.Object({ id: Type.String() }),
+ *   inject: { user, apps },
+ *   handle: async (c, { user, apps }) => c.json(await apps.put(c.params.path.slug, user)),
+ * })
+ */
 export const Route: {
   <const I extends RouteSpec, C = {}>(schema: I, handler: RouteHandler<I, C>): Route<I, C, Request>
   /**
@@ -106,6 +132,13 @@ export type Defined<P, M, Pa, Q, B, Res> = { path: P; method: M; params: Pa; que
 // ------------------------------------------------------------------
 // Route handler
 // ------------------------------------------------------------------
+/**
+ * Type a handler against a spec before it has a route, e.g. to define it in another file.
+ *
+ * @example
+ * const handleGetItem = Handler<typeof getItem>((c) => c.json(items.get(c.params.path.id)))
+ * const GetItem = Route(getItem, handleGetItem)
+ */
 export const Handler: {
   <I extends RouteSpec>(handler: RouteHandler<I>): RouteHandler<I>
 } = (handler: any) => handler
@@ -125,7 +158,15 @@ export interface RouteHandlerContext<I extends RouteSpec> {
 // Route adapter
 // ------------------------------------------------------------------
 
-/** Create a route request handler for a route */
+/**
+ * Give a route its outside context, or custom extractors, and get back a route whose `fetch` needs nothing more.
+ *
+ * @example
+ * const Me = adapt(Route(meSpec, (c, cx: { user: string }) => c.json({ user: cx.user })), {
+ *   context: (req) => ({ user: req.headers.get('x-user')! }),
+ * })
+ * await Me.fetch(new Request('http://localhost/me'))
+ */
 export const adapt = <R extends Request, C = undefined, I extends RouteSpec = RouteSpec>(
   rt: { spec: I; handler: RouteHandler<I, C> },
   e: AdapterOptions<R, I['body'] | I['query'] | I['params'], C> = {},
@@ -148,6 +189,12 @@ export const adapter = <R extends Request, C = undefined, S extends Schema.Type 
 // ------------------------------------------------------------------
 // Route Transform
 // ------------------------------------------------------------------
+/**
+ * Prepend `prefix` to every spec's path, keeping the literal path types.
+ *
+ * @example
+ * const [list, get] = PrefixSpecs('/v1', listItems, getItem) // paths '/v1/items', '/v1/items/:id'
+ */
 export const PrefixSpecs = <P extends string, const I extends RouteSpec[]>(
   prefix: P,
   ...routes: I
@@ -155,6 +202,12 @@ export const PrefixSpecs = <P extends string, const I extends RouteSpec[]>(
 
 type PrefixSpec<P extends string, T extends RouteSpec> = Compute<Omit<T, 'path'> & { path: `${P}${T['path']}` }>
 
+/**
+ * Prepend `prefix` to every route's path. Inside a `Router`, prefer its `prefix` option.
+ *
+ * @example
+ * const v1 = Prefix('/v1', List, Update)
+ */
 export const Prefix = <P extends string, const I extends Route<any, any, any>[]>(
   prefix: P,
   ...routes: I

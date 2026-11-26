@@ -34,7 +34,14 @@ export const compose = (use: readonly Middleware[], handler: Fetch): Fetch =>
     return async (req) => run(req)
   }, handler)
 
-/** Continue only when `check` passes; otherwise answer with its `Response`, or 403. */
+/**
+ * Continue only when `check` passes; otherwise answer with its `Response`, or 403.
+ *
+ * @example
+ * const signedIn = guard(async (req) => !!(await inject(req, session)))
+ * const admin = guard(async (req) => (await inject(req, user)).admin || new Response('Admins only', { status: 403 }))
+ * Router({ use: [signedIn, admin], routes: [Delete] })
+ */
 export const guard =
   (check: (req: Request) => P<boolean | Response>): Middleware =>
   (next) =>
@@ -83,6 +90,8 @@ export type Needs<R extends readonly Node[]> = Route.Intersect<{ [K in keyof R]:
 type NeedsOf<T> = T extends Router<infer N> ? N : T extends Route.Route<any, infer C, any> ? C : never
 
 /**
+ * A tree of routes with shared prefixes, middleware and overrides, served by one `fetch`.
+ *
  * @example
  * const api = Router({
  *   prefix: '/api',
